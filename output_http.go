@@ -143,7 +143,7 @@ func NewHTTPOutput(address string, config *HTTPOutputConfig) io.Writer {
 		o.elasticSearch.Init(o.config.elasticSearch)
 	}
 
-	if Settings.recognizeTCPSessions {
+	if Settings.RecognizeTCPSessions {
 		if !PRO {
 			log.Fatal("Detailed TCP sessions work only with PRO license")
 		}
@@ -249,7 +249,7 @@ func (o *HTTPOutput) Write(data []byte) (n int, err error) {
 		o.queueStats.Write(len(o.queue))
 	}
 
-	if !Settings.recognizeTCPSessions && o.config.workersMax != o.config.workersMin {
+	if !Settings.RecognizeTCPSessions && o.config.workersMax != o.config.workersMin {
 		workersCount := int(atomic.LoadInt64(&o.activeWorkers))
 
 		if len(o.queue) > workersCount {
@@ -275,7 +275,7 @@ func (o *HTTPOutput) Read(data []byte) (int, error) {
 	case resp = <-o.responses:
 	}
 
-	if Settings.debug {
+	if Settings.Debug {
 		Debug("[OUTPUT-HTTP] Received response:", string(resp.payload))
 	}
 
@@ -289,7 +289,7 @@ func (o *HTTPOutput) Read(data []byte) (int, error) {
 func (o *HTTPOutput) sendRequest(client *HTTPClient, request []byte) {
 	meta := payloadMeta(request)
 
-	if Settings.debug {
+	if Settings.Debug {
 		Debug(meta)
 	}
 

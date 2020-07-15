@@ -98,7 +98,7 @@ func (i *RAWInput) listen(address string) {
 		log.Fatalf("input-raw: error while parsing address: %s", err)
 	}
 
-	i.listener = raw.NewListener(host, port, i.engine, i.trackResponse, i.expire, i.protocol, i.bpfFilter, i.timestampType, i.bufferSize, Settings.inputRAWOverrideSnapLen, Settings.inputRAWImmediateMode)
+	i.listener = raw.NewListener(host, port, i.engine, i.trackResponse, i.expire, i.protocol, i.bpfFilter, i.timestampType, i.bufferSize, Settings.InputRAWOverrideSnapLen, Settings.InputRAWImmediateMode)
 
 	ch := i.listener.Receiver()
 

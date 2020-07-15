@@ -90,42 +90,42 @@ func InitPlugins() *InOutPlugins {
 		registerPlugin(NewDummyOutput)
 	}
 
-	if Settings.outputStdout {
+	if Settings.OutputStdout {
 		registerPlugin(NewDummyOutput)
 	}
 
-	if Settings.outputNull {
+	if Settings.OutputNull {
 		registerPlugin(NewNullOutput)
 	}
 
 	engine := EnginePcap
-	if Settings.inputRAWEngine == "raw_socket" {
+	if Settings.InputRAWEngine == "raw_socket" {
 		engine = EngineRawSocket
-	} else if Settings.inputRAWEngine == "pcap_file" {
+	} else if Settings.InputRAWEngine == "pcap_file" {
 		engine = EnginePcapFile
 	}
 
 	for _, options := range Settings.inputRAW {
-		registerPlugin(NewRAWInput, options, engine, Settings.inputRAWTrackResponse, Settings.inputRAWExpire, Settings.inputRAWRealIPHeader, Settings.inputRAWProtocol, Settings.inputRAWBpfFilter, Settings.inputRAWTimestampType, Settings.inputRAWBufferSize)
+		registerPlugin(NewRAWInput, options, engine, Settings.InputRAWTrackResponse, Settings.InputRAWExpire, Settings.InputRAWRealIPHeader, Settings.InputRAWProtocol, Settings.InputRAWBpfFilter, Settings.InputRAWTimestampType, Settings.InputRAWBufferSize)
 	}
 
 	for _, options := range Settings.inputTCP {
-		registerPlugin(NewTCPInput, options, &Settings.inputTCPConfig)
+		registerPlugin(NewTCPInput, options, &Settings.InputTCPConfig)
 	}
 
 	for _, options := range Settings.outputTCP {
-		registerPlugin(NewTCPOutput, options, &Settings.outputTCPConfig)
+		registerPlugin(NewTCPOutput, options, &Settings.OutputTCPConfig)
 	}
 
 	for _, options := range Settings.inputFile {
-		registerPlugin(NewFileInput, options, Settings.inputFileLoop)
+		registerPlugin(NewFileInput, options, Settings.InputFileLoop)
 	}
 
 	for _, path := range Settings.outputFile {
 		if strings.HasPrefix(path, "s3://") {
-			registerPlugin(NewS3Output, path, &Settings.outputFileConfig)
+			registerPlugin(NewS3Output, path, &Settings.OutputFileConfig)
 		} else {
-			registerPlugin(NewFileOutput, path, &Settings.outputFileConfig)
+			registerPlugin(NewFileOutput, path, &Settings.OutputFileConfig)
 		}
 	}
 
@@ -137,17 +137,17 @@ func InitPlugins() *InOutPlugins {
 	// Fix: https://github.com/buger/gor/issues/174
 	for _, header := range Settings.modifierConfig.headers {
 		if header.Name == "Host" {
-			Settings.outputHTTPConfig.OriginalHost = true
+			Settings.OutputHTTPConfig.OriginalHost = true
 			break
 		}
 	}
 
 	for _, options := range Settings.outputHTTP {
-		registerPlugin(NewHTTPOutput, options, &Settings.outputHTTPConfig)
+		registerPlugin(NewHTTPOutput, options, &Settings.OutputHTTPConfig)
 	}
 
 	for _, options := range Settings.outputBinary {
-		registerPlugin(NewBinaryOutput, options, &Settings.outputBinaryConfig)
+		registerPlugin(NewBinaryOutput, options, &Settings.OutputBinaryConfig)
 	}
 
 	if Settings.outputKafkaConfig.host != "" && Settings.outputKafkaConfig.topic != "" {

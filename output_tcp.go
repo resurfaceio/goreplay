@@ -34,7 +34,7 @@ func NewTCPOutput(address string, config *TCPOutputConfig) io.Writer {
 	o.address = address
 	o.config = config
 
-	if Settings.outputTCPStats {
+	if Settings.OutputTCPStats {
 		o.bufStats = NewGorStat("output_tcp", 5000)
 	}
 
@@ -114,7 +114,7 @@ func (o *TCPOutput) Write(data []byte) (n int, err error) {
 	bufferIndex := o.getBufferIndex(data)
 	o.buf[bufferIndex] <- newBuf
 
-	if Settings.outputTCPStats {
+	if Settings.OutputTCPStats {
 		o.bufStats.Write(len(o.buf[bufferIndex]))
 	}
 

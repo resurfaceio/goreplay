@@ -108,7 +108,7 @@ func (e *emitter) Close() {
 
 // CopyMulty copies from 1 reader to multiple writers
 func CopyMulty(stop chan int, src io.Reader, writers ...io.Writer) error {
-	buf := make([]byte, Settings.copyBufferSize)
+	buf := make([]byte, Settings.CopyBufferSize)
 	wIndex := 0
 	modifier := NewHTTPModifier(&Settings.modifierConfig)
 	filteredRequests := make(map[string]time.Time)
@@ -140,7 +140,7 @@ func CopyMulty(stop chan int, src io.Reader, writers ...io.Writer) error {
 			payload := buf[:nr]
 			meta := payloadMeta(payload)
 			if len(meta) < 3 {
-				if Settings.debug {
+				if Settings.Debug {
 					Debug("[EMITTER] Found malformed record", string(payload[0:_maxN]), nr, "from:", src)
 				}
 				continue
@@ -151,7 +151,7 @@ func CopyMulty(stop chan int, src io.Reader, writers ...io.Writer) error {
 				log.Println("INFO: Large packet... We received ", len(payload), " bytes from ", src)
 			}
 
-			if Settings.debug {
+			if Settings.Debug {
 				Debug("[EMITTER] input:", string(payload[0:_maxN]), nr, "from:", src)
 			}
 
@@ -172,7 +172,7 @@ func CopyMulty(stop chan int, src io.Reader, writers ...io.Writer) error {
 						payload = append(payload[:headSize], body...)
 					}
 
-					if Settings.debug {
+					if Settings.Debug {
 						Debug("[EMITTER] Rewritten input:", len(payload), "First 500 bytes:", string(payload[0:_maxN]))
 					}
 				} else {
@@ -183,15 +183,15 @@ func CopyMulty(stop chan int, src io.Reader, writers ...io.Writer) error {
 				}
 			}
 
-			if Settings.prettifyHTTP {
+			if Settings.PrettifyHTTP {
 				payload = prettifyHTTP(payload)
 				if len(payload) == 0 {
 					continue
 				}
 			}
 
-			if Settings.splitOutput {
-				if Settings.recognizeTCPSessions {
+			if Settings.SplitOutput {
+				if Settings.RecognizeTCPSessions {
 					if !PRO {
 						log.Fatal("Detailed TCP sessions work only with PRO license")
 					}

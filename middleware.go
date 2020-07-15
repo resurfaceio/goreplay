@@ -75,7 +75,7 @@ func (m *Middleware) copy(to io.Writer, from io.Reader) {
 
 		payload := buf[0:nr]
 
-		if Settings.prettifyHTTP {
+		if Settings.PrettifyHTTP {
 			payload = prettifyHTTP(payload)
 			nr = len(payload)
 
@@ -84,7 +84,7 @@ func (m *Middleware) copy(to io.Writer, from io.Reader) {
 			}
 		}
 
-		if Settings.prettifyHTTP {
+		if Settings.PrettifyHTTP {
 			payload = prettifyHTTP(payload)
 			nr = len(payload)
 		}
@@ -96,7 +96,7 @@ func (m *Middleware) copy(to io.Writer, from io.Reader) {
 		to.Write(dst[0 : nr*2+1])
 		m.mu.Unlock()
 
-		if Settings.debug {
+		if Settings.Debug {
 			Debug("[MIDDLEWARE-MASTER] Sending:", string(buf[0:nr]), "From:", from)
 		}
 	}
@@ -121,7 +121,7 @@ func (m *Middleware) read(from io.Reader) {
 			fmt.Fprintln(os.Stderr, "Failed to decode input payload", err, len(line), string(line[:len(line)-1]))
 		}
 
-		if Settings.debug {
+		if Settings.Debug {
 			Debug("[MIDDLEWARE-MASTER] Received:", string(buf))
 		}
 

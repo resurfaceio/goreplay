@@ -233,7 +233,7 @@ func (o *FileOutput) Write(data []byte) (n int, err error) {
 	o.totalFileSize += int64(n)
 	o.queueLength++
 
-	if Settings.outputFileConfig.outputFileMaxSize > 0 && o.totalFileSize >= Settings.outputFileConfig.outputFileMaxSize {
+	if Settings.OutputFileConfig.outputFileMaxSize > 0 && o.totalFileSize >= Settings.OutputFileConfig.outputFileMaxSize {
 		return n, errors.New("File output reached size limit")
 	}
 

@@ -99,8 +99,8 @@ func (p *ESPlugin) Init(URI string) {
 	p.done = make(chan bool)
 	p.indexor.Start()
 
-	if Settings.verbose {
-		// Only start the ErrorHandler goroutine when in verbose mode
+	if Settings.Verbose {
+		// Only start the ErrorHandler goroutine when in Verbose mode
 		// no need to burn ressources otherwise
 		go p.ErrorHandler()
 	}

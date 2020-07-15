@@ -17,7 +17,7 @@ import (
 
 type fakeServiceCb func(string, int, []byte)
 
-// Simple service that generate token on request, and require this token for accesing to secure area
+// Simple service that generate token on request, and require this token for accesing to Secure area
 func NewFakeSecureService(wg *sync.WaitGroup, cb fakeServiceCb) *httptest.Server {
 	active_tokens := make([]string, 0)
 	var mu sync.Mutex
@@ -39,7 +39,7 @@ func NewFakeSecureService(wg *sync.WaitGroup, cb fakeServiceCb) *httptest.Server
 			w.Write([]byte(token))
 
 			cb(req.URL.Path, 200, []byte(token))
-		case "/secure":
+		case "/Secure":
 			token := req.URL.Query().Get("token")
 			token_found := false
 
@@ -81,13 +81,13 @@ func TestFakeSecureService(t *testing.T) {
 	token = proto.Body(resp)
 
 	// Right token
-	resp, _ = client.Get("/secure?token=" + string(token))
+	resp, _ = client.Get("/Secure?token=" + string(token))
 	if !bytes.Equal(proto.Status(resp), []byte("202")) {
 		t.Error("Valid token should return status 202:", string(proto.Status(resp)))
 	}
 
 	// Wrong tokens forbidden
-	resp, _ = client.Get("/secure?token=wrong")
+	resp, _ = client.Get("/Secure?token=wrong")
 	if !bytes.Equal(proto.Status(resp), []byte("403")) {
 		t.Error("Wrong token should returns status 403:", string(proto.Status(resp)))
 	}
@@ -114,7 +114,7 @@ func TestEchoMiddleware(t *testing.T) {
 
 	quit := make(chan int)
 
-	Settings.middleware = "./examples/middleware/echo.sh"
+	Settings.Middleware = "./examples/Middleware/echo.sh"
 
 	// Catch traffic from one service
 	fromAddr := strings.Replace(from.Listener.Addr().String(), "[::]", "127.0.0.1", -1)
@@ -132,9 +132,9 @@ func TestEchoMiddleware(t *testing.T) {
 
 	// Start Gor
 	emitter := NewEmitter(quit)
-	go emitter.Start(plugins, Settings.middleware)
+	go emitter.Start(plugins, Settings.Middleware)
 
-	// Wait till middleware initialization
+	// Wait till Middleware initialization
 	time.Sleep(100 * time.Millisecond)
 
 	// Should receive 2 requests from original + 2 from replayed
@@ -153,7 +153,7 @@ func TestEchoMiddleware(t *testing.T) {
 	emitter.Close()
 	time.Sleep(200 * time.Millisecond)
 
-	Settings.middleware = ""
+	Settings.Middleware = ""
 }
 
 func TestTokenMiddleware(t *testing.T) {
@@ -168,7 +168,7 @@ func TestTokenMiddleware(t *testing.T) {
 
 	to := NewFakeSecureService(wg, func(path string, status int, tok []byte) {
 		switch path {
-		case "/secure":
+		case "/Secure":
 			if status != 202 {
 				t.Error("Server should receive valid rewritten token")
 			}
@@ -180,7 +180,7 @@ func TestTokenMiddleware(t *testing.T) {
 
 	quit := make(chan int)
 
-	Settings.middleware = "go run ./examples/middleware/token_modifier.go"
+	Settings.Middleware = "go run ./examples/Middleware/token_modifier.go"
 
 	fromAddr := strings.Replace(from.Listener.Addr().String(), "[::]", "127.0.0.1", -1)
 	// Catch traffic from one service
@@ -198,9 +198,9 @@ func TestTokenMiddleware(t *testing.T) {
 
 	// Start Gor
 	emitter := NewEmitter(quit)
-	go emitter.Start(plugins, Settings.middleware)
+	go emitter.Start(plugins, Settings.Middleware)
 
-	// Wait for middleware to initialize
+	// Wait for Middleware to initialize
 	// Give go compiller time to build programm
 	time.Sleep(500 * time.Millisecond)
 
@@ -213,11 +213,11 @@ func TestTokenMiddleware(t *testing.T) {
 	resp, _ = client.Get("/token")
 	token = proto.Body(resp)
 
-	// When delay is too smal, middleware does not always rewrite requests in time
+	// When delay is too smal, Middleware does not always rewrite requests in time
 	// Hopefuly client will have delay more then 100ms :)
 	time.Sleep(100 * time.Millisecond)
 
-	resp, _ = client.Get("/secure?token=" + string(token))
+	resp, _ = client.Get("/Secure?token=" + string(token))
 	if !bytes.Equal(proto.Status(resp), []byte("202")) {
 		t.Error("Valid token should return 202:", proto.Status(resp))
 	}
@@ -225,5 +225,5 @@ func TestTokenMiddleware(t *testing.T) {
 	wg.Wait()
 	emitter.Close()
 	time.Sleep(100 * time.Millisecond)
-	Settings.middleware = ""
+	Settings.Middleware = ""
 }

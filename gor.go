@@ -40,7 +40,7 @@ func main() {
 	// // Don't exit on panic
 	// defer func() {
 	// 	if r := recover(); r != nil {
-	// 		fmt.Printf("PANIC: pkg: %v %s \n", r, debug.Stack())
+	// 		fmt.Printf("PANIC: pkg: %v %s \n", r, Debug.Stack())
 	// 	}
 	// }()
 
@@ -63,6 +63,7 @@ func main() {
 	} else {
 		flag.Parse()
 		checkSettings()
+		time.Sleep(60*time.Second)
 		plugins = InitPlugins()
 	}
 
@@ -80,9 +81,9 @@ func main() {
 		profileCPU(*cpuprofile)
 	}
 
-	if Settings.pprof != "" {
+	if Settings.Pprof != "" {
 		go func() {
-			log.Println(http.ListenAndServe(Settings.pprof, nil))
+			log.Println(http.ListenAndServe(Settings.Pprof, nil))
 		}()
 	}
 
@@ -95,16 +96,16 @@ func main() {
 		os.Exit(1)
 	}()
 
-	if Settings.exitAfter > 0 {
-		log.Println("Running gor for a duration of", Settings.exitAfter)
+	if Settings.ExitAfter > 0 {
+		log.Println("Running gor for a duration of", Settings.ExitAfter)
 
-		time.AfterFunc(Settings.exitAfter, func() {
-			log.Println("Stopping gor after", Settings.exitAfter)
+		time.AfterFunc(Settings.ExitAfter, func() {
+			log.Println("Stopping gor after", Settings.ExitAfter)
 			close(closeCh)
 		})
 	}
 
-	emitter.Start(plugins, Settings.middleware)
+	emitter.Start(plugins, Settings.Middleware)
 }
 
 func finalize(plugins *InOutPlugins) {

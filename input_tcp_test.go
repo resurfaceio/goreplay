@@ -34,7 +34,7 @@ func TestTCPInput(t *testing.T) {
 	plugins.All = append(plugins.All, input, output)
 
 	emitter := NewEmitter(quit)
-	go emitter.Start(plugins, Settings.middleware)
+	go emitter.Start(plugins, Settings.Middleware)
 
 	tcpAddr, err := net.ResolveTCPAddr("tcp", input.listener.Addr().String())
 
@@ -102,9 +102,9 @@ func TestTCPInputSecure(t *testing.T) {
 	quit := make(chan int)
 
 	input := NewTCPInput("127.0.0.1:0", &TCPInputConfig{
-		secure:          true,
-		certificatePath: serverCertPemFile.Name(),
-		keyPath:         serverPrivPemFile.Name(),
+		Secure:          true,
+		CertificatePath: serverCertPemFile.Name(),
+		KeyPath:         serverPrivPemFile.Name(),
 	})
 	output := NewTestOutput(func(data []byte) {
 		wg.Done()
@@ -117,7 +117,7 @@ func TestTCPInputSecure(t *testing.T) {
 	plugins.All = append(plugins.All, input, output)
 
 	emitter := NewEmitter(quit)
-	go emitter.Start(plugins, Settings.middleware)
+	go emitter.Start(plugins, Settings.Middleware)
 
 	conf := &tls.Config{
 		InsecureSkipVerify: true,
