@@ -1,15 +1,24 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"regexp"
 	"runtime"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
+	_ "github.com/spf13/viper/remote"
 )
 
 var DEMO string
@@ -93,6 +102,10 @@ type AppSettings struct {
 
 	InputKafkaConfig  InputKafkaConfig
 	OutputKafkaConfig OutputKafkaConfig
+
+	ConfigFile          string `json:"config-file"`
+	ConfigServerAddress string `json:"config-server-address"`
+	RemoteConfigHost    string `json:"config-remote-host"`
 }
 
 // Settings holds Gor configuration
@@ -102,6 +115,63 @@ func usage() {
 	fmt.Printf("Gor is a simple http traffic replication tool written in Go. Its main goal is to replay traffic from production servers to staging and dev environments.\nProject page: https://github.com/buger/gor\nAuthor: <Leonid Bugaev> leonsbox@gmail.com\nCurrent Version: v%s\n\n", VERSION)
 	flag.PrintDefaults()
 	os.Exit(2)
+}
+
+func readAndUpdateConfig(body io.ReadCloser) []byte {
+	decoder := json.NewDecoder(body)
+
+	var t AppSettings
+	err := decoder.Decode(&t)
+	if err != nil {
+		return []byte("Error while updating flags via POST request.")
+	}
+	Settings = t
+	newConfig, err := json.Marshal(Settings)
+	if err != nil {
+		return []byte("Error while updating flags via POST request.")
+	}
+	err = viper.ReadConfig(bytes.NewBuffer(newConfig))
+	if err != nil {
+		return []byte("Error while updating flags via POST request.")
+	}
+	return nil
+}
+
+func updateConfig(respBody []byte) {
+	var t AppSettings
+	if err := json.Unmarshal(respBody, &t); err != nil {
+		return
+	}
+	Settings = t
+	newConfig, err := json.Marshal(Settings)
+	if err != nil {
+		return
+	}
+	err = viper.ReadConfig(bytes.NewBuffer(newConfig))
+	if err != nil {
+		return
+	}
+}
+
+func flagz(res http.ResponseWriter, req *http.Request) {
+	for k, v := range req.URL.Query() {
+		if len(v) == 1 {
+			viper.Set(k, v[0])
+			viper.Unmarshal(&Settings)
+		}
+	}
+
+	if req.Method == "POST" {
+		res.Write(readAndUpdateConfig(req.Body))
+	}
+	data, _ := json.MarshalIndent(Settings, "", " ")
+	res.Write(data)
+
+}
+
+func initConfigServer() {
+	http.HandleFunc("/flagz", flagz)
+	http.ListenAndServe(Settings.ConfigServerAddress, nil)
 }
 
 func init() {
@@ -253,6 +323,67 @@ func init() {
 	Settings.copyBufferSize = 5242880
 	Settings.InputRAWConfig.BufferSize = 0
 
+	currrentDir, _ := os.Getwd()
+	log.Printf("Locating config in folder: %s", currrentDir)
+
+	flag.StringVar(&Settings.ConfigFile, "config-file", "config.json", "The path to Goreplay config file.")
+	viper.SetConfigFile(currrentDir + "/" + Settings.ConfigFile)
+
+	flag.StringVar(&Settings.ConfigServerAddress, "config-server-address", ":9999", "The host address for config API.")
+	viper.SetConfigFile(Settings.ConfigFile)
+
+	// config-remote-host : http://localhost:8000
+	flag.StringVar(&Settings.RemoteConfigHost, "config-remote-host", "", "The host address for config API.")
+
+	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+	pflag.Parse()
+	viper.BindPFlags(pflag.CommandLine)
+
+	// Searches for config file in given paths and read it
+	if err := viper.ReadInConfig(); err != nil {
+		log.Printf("Error reading config file, %s", err)
+		return
+	}
+	viper.Unmarshal(&Settings)
+
+	if Settings.RemoteConfigHost != "" {
+		log.Printf("Starting to read remote config from: %s", Settings.RemoteConfigHost)
+		go pollRemoteConfig()
+	}
+
+	fmt.Printf("Using config: %s\n", viper.ConfigFileUsed())
+
+	initConfigServer()
+
+}
+
+func pollRemoteConfig() {
+	for {
+		req, err := http.NewRequest("GET", Settings.RemoteConfigHost+"/config.json", nil)
+		if err != nil {
+			log.Printf("Error while getting config from remote server., %s", err)
+			continue
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Printf("Error while getting config from remote server., %s", err)
+			continue
+		}
+		defer resp.Body.Close()
+
+		respBody, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			log.Printf("Error while getting config from remote server., %s", err)
+			continue
+		}
+
+		updateConfig(respBody)
+		resp.Body.Close()
+		time.Sleep(time.Second)
+	}
 }
 
 func checkSettings() {
