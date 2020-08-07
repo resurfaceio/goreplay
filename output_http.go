@@ -62,28 +62,28 @@ type response struct {
 
 // HTTPOutputConfig struct for holding http output configuration
 type HTTPOutputConfig struct {
-	RedirectLimit int `json:"output-http-redirect-limit"`
+	RedirectLimit int `json:"output-http-redirect-limit" mapstructure:"output-http-redirect-limit"`
 
-	Stats      bool `json:"output-http-stats"`
-	WorkersMin int  `json:"output-http-workers-min"`
-	WorkersMax int  `json:"output-http-workers"`
-	StatsMs    int  `json:"output-http-stats-ms"`
-	Workers    int
-	QueueLen   int `json:"output-http-queue-len"`
+	Stats      bool `json:"output-http-stats" mapstructure:"output-http-stats"`
+	WorkersMin int  `json:"output-http-workers-min" mapstructure:"output-http-workers-min"`
+	WorkersMax int  `json:"output-http-workers" mapstructure:"output-http-workers"`
+	StatsMs    int  `json:"output-http-stats-ms" mapstructure:"output-http-stats-ms"`
+	workers    int
+	QueueLen   int `json:"output-http-queue-len" mapstructure:"output-http-queue-len"`
 
-	ElasticSearch string `json:"output-http-elasticsearch"`
+	ElasticSearch string `json:"output-http-elasticsearch" mapstructure:"output-http-elasticsearch"`
 
-	Timeout      time.Duration `json:"output-http-timeout"`
-	OriginalHost bool          `json:"output-http-original-host"`
-	BufferSize   int           `json:"output-http-response-buffer"`
+	Timeout      time.Duration `json:"output-http-timeout" mapstructure:"output-http-timeout"`
+	OriginalHost bool          `json:"output-http-original-host" mapstructure:"output-http-original-host"`
+	BufferSize   int           `json:"output-http-response-buffer" mapstructure:"output-http-response-buffer"`
 
-	CompatibilityMode bool `json:"output-http-compatibility-mode"`
+	CompatibilityMode bool `json:"output-http-compatibility-mode" mapstructure:"output-http-compatibility-mode"`
 
-	RequestGroup string
+	requestGroup string
 
-	Debug bool `json:"output-http-debug"`
+	Debug bool `json:"output-http-debug" mapstructure:"output-http-debug"`
 
-	TrackResponses bool `json:"output-http-track-response"`
+	TrackResponses bool `json:"output-http-track-response" mapstructure:"output-http-track-response"`
 }
 
 // HTTPOutput plugin manage pool of workers which send request to replayed server

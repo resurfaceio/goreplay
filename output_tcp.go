@@ -22,8 +22,8 @@ type TCPOutput struct {
 }
 
 type TCPOutputConfig struct {
-	Secure bool `json:"output-tcp-secure"`
-	Sticky bool `json:"output-tcp-sticky"`
+	Secure bool `json:"output-tcp-secure" mapstructure:"output-tcp-secure"`
+	Sticky bool `json:"output-tcp-sticky" mapstructure:"output-tcp-sticky"`
 }
 
 // NewTCPOutput constructor for TCPOutput

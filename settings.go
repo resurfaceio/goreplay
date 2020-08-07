@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	_ "github.com/mitchellh/mapstructure"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	_ "github.com/spf13/viper/remote"
@@ -37,75 +38,150 @@ func (h *MultiOption) Set(value string) error {
 }
 
 type InputRAWConfig struct {
-	Engine        string        `json:"input-raw-engine"`
-	TrackResponse bool          `json:"input-raw-track-response"`
-	RealIPHeader  string        `json:"input-raw-realip-header"`
-	Expire        time.Duration `json:"input-raw-expire"`
-	Protocol      string        `json:"input-raw-protocol"`
-	BpfFilter     string        `json:"input-raw-bpf-filter"`
-	TimestampType string        `json:"input-raw-timestamp-type"`
+	Engine        string        `json:"input-raw-engine" mapstructure:"input-raw-engine"`
+	TrackResponse bool          `json:"input-raw-track-response" mapstructure:"input-raw-track-response"`
+	RealIPHeader  string        `json:"input-raw-realip-header" mapstructure:"input-raw-realip-header"`
+	Expire        time.Duration `json:"input-raw-expire" mapstructure:"input-raw-expire"`
+	Protocol      string        `json:"input-raw-protocol" mapstructure:"input-raw-protocol"`
+	BpfFilter     string        `json:"input-raw-bpf-filter" mapstructure:"input-raw-bpf-filter"`
+	TimestampType string        `json:"input-raw-timestamp-type" mapstructure:"input-raw-timestamp-type"`
 
-	ImmediateMode   bool `json:"input-raw-immediate-mode"`
-	BufferSize      int64
-	OverrideSnapLen bool   `json:"input-raw-override-snaplen"`
-	BufferSizeFlag  string `json:"input-raw-buffer-size"`
+	ImmediateMode   bool `json:"input-raw-immediate-mode" mapstructure:"input-raw-immediate-mode"`
+	bufferSize      int64
+	OverrideSnapLen bool   `json:"input-raw-override-snaplen" mapstructure:"input-raw-override-snaplen"`
+	BufferSizeFlag  string `json:"input-raw-buffer-size" mapstructure:"input-raw-buffer-size"`
 }
 
 // AppSettings is the struct of main configuration
 type AppSettings struct {
-	Verbose   bool          `json:"verbose"`
-	Debug     bool          `json:"debug"`
-	Stats     bool          `json:"stats"`
-	ExitAfter time.Duration `json:"exit-after"`
+	Verbose   bool          `json:"verbose" mapstructure:"verbose"`
+	Debug     bool          `json:"debug" mapstructure:"debug"`
+	Stats     bool          `json:"stats" mapstructure:"stats"`
+	ExitAfter time.Duration `json:"exit-after" mapstructure:"exit-after"`
 
-	SplitOutput          bool   `json:"split-output"`
-	RecognizeTCPSessions bool   `json:"recognize-tcp-sessions"`
-	Pprof                string `json:"http-pprof"`
+	SplitOutput          bool   `json:"split-output" mapstructure:"split-output"`
+	RecognizeTCPSessions bool   `json:"recognize-tcp-sessions" mapstructure:"recognize-tcp-sessions"`
+	Pprof                string `json:"http-pprof" mapstructure:"http-pprof"`
 
 	InputDummy   MultiOption `json:"input-dummy"`
-	OutputDummy  MultiOption
-	OutputStdout bool `json:"output-stdout"`
-	OutputNull   bool `json:"output-null"`
+	OutputDummy  MultiOption `json:"output-dummy" mapstructure:"output-dummy"`
+	OutputStdout bool        `json:"output-stdout" mapstructure:"output-stdout"`
+	OutputNull   bool        `json:"output-null" mapstructure:"output-null"`
 
-	InputTCP        MultiOption `json:"input-tcp"`
-	InputTCPConfig  TCPInputConfig
-	OutputTCP       MultiOption `json:"output-tcp"`
-	OutputTCPConfig TCPOutputConfig
-	OutputTCPStats  bool `json:"output-tcp-stats"`
+	InputTCP        MultiOption     `json:"input-tcp" mapstructure:"input-tcp"`
+	InputTCPConfig  TCPInputConfig  `json:"input-tcp-config" mapstructure:"input-tcp-config"`
+	OutputTCP       MultiOption     `json:"output-tcp" mapstructure:"output-tcp"`
+	OutputTCPConfig TCPOutputConfig `json:"output-tcp-config" mapstructure:"output-tcp-config"`
+	OutputTCPStats  bool            `json:"output-tcp-stats" mapstructure:"output-tcp-stats"`
 
-	InputFile        MultiOption `json:"input-file"`
-	InputFileLoop    bool        `json:"input-file-loop"`
-	OutputFile       MultiOption `json:"output-file"`
-	OutputFileConfig FileOutputConfig
+	InputFile        MultiOption      `json:"input-file" mapstructure:"input-file"`
+	InputFileLoop    bool             `json:"input-file-loop" mapstructure:"input-file-loop"`
+	OutputFile       MultiOption      `json:"output-file" mapstructure:"output-file"`
+	OutputFileConfig FileOutputConfig `json:"output-file-config" mapstructure:"output-file-config"`
 
-	InputRAW       MultiOption `json:"input_raw"`
-	InputRAWConfig InputRAWConfig
+	InputRAW       MultiOption    `json:"input_raw" mapstructure:"input_raw"`
+	InputRAWConfig InputRAWConfig `json:"input-raw-config" mapstructure:"input-raw-config"`
 
 	copyBufferSize int64
 
-	OutputFileSizeFlag    string `json:"output-file-size-limit"`
-	OutputFileMaxSizeFlag string `json:"output-file-max-size-limit"`
-	CopyBufferSizeFlag    string `json:"copy-buffer-size"`
+	OutputFileSizeFlag    string `json:"output-file-size-limit" mapstructure:"output-file-size-limit"`
+	OutputFileMaxSizeFlag string `json:"output-file-max-size-limit" mapstructure:"output-file-max-size-limit"`
+	CopyBufferSizeFlag    string `json:"copy-buffer-size" mapstructure:"copy-buffer-size"`
 
-	Middleware string `json:"middleware"`
+	Middleware string `json:"middleware" mapstructure:"middleware"`
 
-	InputHTTP    MultiOption
-	OutputHTTP   MultiOption `json:"output-http"`
-	PrettifyHTTP bool        `json:"prettify-http"`
+	InputHTTP    MultiOption `json:"input-http" mapstructure:"input-http"`
+	OutputHTTP   MultiOption `json:"output-http" mapstructure:"output-http"`
+	PrettifyHTTP bool        `json:"prettify-http" mapstructure:"prettify-http"`
 
-	OutputHTTPConfig HTTPOutputConfig
+	OutputHTTPConfig HTTPOutputConfig `json:"output-http-config" mapstructure:"output-http-config"`
 
-	OutputBinary       MultiOption `json:"output-binary"`
-	OutputBinaryConfig BinaryOutputConfig
+	OutputBinary       MultiOption        `json:"output-binary" mapstructure:"output-binary"`
+	OutputBinaryConfig BinaryOutputConfig `json:"output-binary-config" mapstructure:"output-binary-config"`
 
-	ModifierConfig HTTPModifierConfig
+	ModifierConfig HTTPModifierConfig `json:"modifier-config" mapstructure:"modifier-config"`
 
-	InputKafkaConfig  InputKafkaConfig
-	OutputKafkaConfig OutputKafkaConfig
+	InputKafkaConfig  InputKafkaConfig  `json:"input-kafka-config" mapstructure:"input-kafka-config"`
+	OutputKafkaConfig OutputKafkaConfig `json:"output-kafka-config" mapstructure:"output-kafka-config"`
 
-	ConfigFile          string `json:"config-file"`
-	ConfigServerAddress string `json:"config-server-address"`
-	RemoteConfigHost    string `json:"config-remote-host"`
+	ConfigFile          string `json:"config-file" mapstructure:"config-file"`
+	ConfigServerAddress string `json:"config-server-address" mapstructure:"config-server-address"`
+	RemoteConfigHost    string `json:"config-remote-host" mapstructure:"config-remote-host"`
+}
+
+var nestedPathMap = make(map[string]string)
+
+func mapForAppSettings() {
+
+	nestedPathMap["input-tcp-secure"] = "input-tcp-config.input-tcp-secure"
+	nestedPathMap["input-tcp-certificate"] = "input-tcp-config.input-tcp-certificate"
+	nestedPathMap["input-tcp-certificate-key"] = "input-tcp-config.input-tcp-certificate-key"
+
+	nestedPathMap["output-tcp-secure"] = "output-tcp-config.output-tcp-secure"
+	nestedPathMap["output-tcp-sticky"] = "output-tcp-config.output-tcp-sticky"
+
+	nestedPathMap["output-tcp-secure"] = "output-tcp-config.output-tcp-secure"
+	nestedPathMap["output-tcp-sticky"] = "output-tcp-config.output-tcp-sticky"
+
+	nestedPathMap["output-file-flush-interval"] = "output-file-config.output-file-flush-interval"
+	nestedPathMap["output-file-queue-limit"] = "output-file-config.output-file-queue-limit"
+	nestedPathMap["output-file-append"] = "output-file-config.output-file-append"
+	nestedPathMap["output-file-buffer"] = "output-file-config.output-file-buffer"
+
+	nestedPathMap["input-raw-engine"] = "input-raw-config.input-raw-engine"
+	nestedPathMap["input-raw-track-response"] = "input-raw-config.input-raw-track-response"
+	nestedPathMap["input-raw-realip-header"] = "input-raw-config.input-raw-realip-header"
+	nestedPathMap["input-raw-expire"] = "input-raw-config.input-raw-expire"
+	nestedPathMap["input-raw-protocol"] = "input-raw-config.input-raw-protocol"
+	nestedPathMap["input-raw-bpf-filter"] = "input-raw-config.input-raw-bpf-filter"
+	nestedPathMap["input-raw-timestamp-type"] = "input-raw-config.input-raw-timestamp-type"
+	nestedPathMap["input-raw-immediate-mode"] = "input-raw-config.input-raw-immediate-mode"
+	nestedPathMap["input-raw-override-snaplen"] = "input-raw-config.input-raw-override-snaplen"
+	nestedPathMap["input-raw-buffer-size"] = "input-raw-config.input-raw-buffer-size"
+
+	nestedPathMap["output-http-redirect-limit"] = "output-http-config.output-http-redirect-limit"
+	nestedPathMap["output-http-stats"] = "output-http-config.output-http-stats"
+	nestedPathMap["output-http-workers-min"] = "output-http-config.output-http-workers-min"
+	nestedPathMap["output-http-workers"] = "output-http-config.output-http-workers"
+	nestedPathMap["output-http-stats-ms"] = "output-http-config.output-http-stats-ms"
+	nestedPathMap["output-http-queue-len"] = "output-http-config.output-http-queue-len"
+	nestedPathMap["output-http-elasticsearch"] = "output-http-config.output-http-elasticsearch"
+	nestedPathMap["output-http-timeout"] = "output-http-config.output-http-timeout"
+	nestedPathMap["output-http-original-host"] = "output-http-config.output-http-original-host"
+	nestedPathMap["output-http-response-buffer"] = "output-http-config.output-http-response-buffer"
+	nestedPathMap["output-http-compatibility-mode"] = "output-http-config.output-http-compatibility-mode"
+	nestedPathMap["output-http-debug"] = "output-http-config.output-http-debug"
+	nestedPathMap["output-http-track-response"] = "output-http-config.output-http-track-response"
+
+	nestedPathMap["output-binary-workers"] = "output-binary-config.output-binary-workers"
+	nestedPathMap["output-binary-timeout"] = "output-binary-config.output-binary-timeout"
+	nestedPathMap["output-tcp-response-buffer"] = "output-binary-config.output-tcp-response-buffer"
+	nestedPathMap["output-binary-debug"] = "output-binary-config.output-binary-debug"
+	nestedPathMap["output-binary-track-response"] = "output-binary-config.output-binary-track-response"
+
+	nestedPathMap["http-disallow-url"] = "modifier-config.http-disallow-url"
+	nestedPathMap["http-allow-url"] = "modifier-config.http-allow-url"
+	nestedPathMap["http-rewrite-url"] = "modifier-config.http-rewrite-url"
+	nestedPathMap["http-rewrite-header"] = "modifier-config.http-rewrite-header"
+
+	nestedPathMap["http-allow-header"] = "modifier-config.http-allow-header"
+	nestedPathMap["http-disallow-header"] = "modifier-config.http-disallow-header"
+	nestedPathMap["http-basic-auth-filter"] = "modifier-config.http-basic-auth-filter"
+	nestedPathMap["http-header-limiter"] = "modifier-config.http-header-limiter"
+
+	nestedPathMap["http-param-limiter"] = "modifier-config.http-param-limiter"
+	nestedPathMap["http-set-param"] = "modifier-config.http-set-param"
+	nestedPathMap["http-set-header"] = "modifier-config.http-set-header"
+	nestedPathMap["http-allow-method"] = "modifier-config.http-allow-method"
+
+	nestedPathMap["input-kafka-host"] = "input-kafka-config.input-kafka-host"
+	nestedPathMap["input-kafka-topic"] = "input-kafka-config.input-kafka-topic"
+	nestedPathMap["input-kafka-json-format"] = "input-kafka-config.input-kafka-json-format"
+
+	nestedPathMap["output-kafka-host"] = "output-kafka-config.output-kafka-host"
+	nestedPathMap["output-kafka-topic"] = "output-kafka-config.output-kafka-topic"
+	nestedPathMap["output-kafka-json-format"] = "output-kafka-config.output-kafka-json-format"
+
 }
 
 // Settings holds Gor configuration
@@ -117,22 +193,22 @@ func usage() {
 	os.Exit(2)
 }
 
-func readAndUpdateConfig(body io.ReadCloser) []byte {
+func readAndUpdateConfig(body io.ReadCloser) error {
 	decoder := json.NewDecoder(body)
 
 	var t AppSettings
 	err := decoder.Decode(&t)
 	if err != nil {
-		return []byte("Error while updating flags via POST request.")
+		return err
 	}
 	Settings = t
 	newConfig, err := json.Marshal(Settings)
 	if err != nil {
-		return []byte("Error while updating flags via POST request.")
+		return err
 	}
 	err = viper.ReadConfig(bytes.NewBuffer(newConfig))
 	if err != nil {
-		return []byte("Error while updating flags via POST request.")
+		return err
 	}
 	return nil
 }
@@ -154,17 +230,41 @@ func updateConfig(respBody []byte) {
 }
 
 func flagz(res http.ResponseWriter, req *http.Request) {
+
 	for k, v := range req.URL.Query() {
 		if len(v) == 1 {
-			viper.Set(k, v[0])
+			value, ok := nestedPathMap[k]
+			if ok {
+				viper.Set(value, v[0])
+			} else {
+				viper.Set(k, v[0])
+			}
 			viper.Unmarshal(&Settings)
 		}
 	}
 
 	if req.Method == "POST" {
-		res.Write(readAndUpdateConfig(req.Body))
+		res.Write([]byte(readAndUpdateConfig(req.Body).Error()))
 	}
 	data, _ := json.MarshalIndent(Settings, "", " ")
+	res.Write(data)
+
+	for k, v := range req.URL.Query() {
+		if len(v) == 1 {
+			value, ok := nestedPathMap[k]
+			if ok {
+				viper.Set(value, v[0])
+			} else {
+				viper.Set(k, v[0])
+			}
+			viper.Unmarshal(&Settings)
+		}
+	}
+
+	if req.Method == "POST" {
+		res.Write([]byte(readAndUpdateConfig(req.Body).Error()))
+	}
+	data, _ = json.MarshalIndent(Settings, "", " ")
 	res.Write(data)
 
 }
@@ -321,7 +421,7 @@ func init() {
 	Settings.OutputFileConfig.sizeLimit = 33554432
 	Settings.OutputFileConfig.outputFileMaxSize = 1099511627776
 	Settings.copyBufferSize = 5242880
-	Settings.InputRAWConfig.BufferSize = 0
+	Settings.InputRAWConfig.bufferSize = 0
 
 	currrentDir, _ := os.Getwd()
 	log.Printf("Locating config in folder: %s", currrentDir)
@@ -333,7 +433,10 @@ func init() {
 	viper.SetConfigFile(Settings.ConfigFile)
 
 	// config-remote-host : http://localhost:8000
+
 	flag.StringVar(&Settings.RemoteConfigHost, "config-remote-host", "", "The host address for config API.")
+
+	mapForAppSettings()
 
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
 	pflag.Parse()
@@ -409,7 +512,7 @@ func checkSettings() {
 	if err != nil {
 		log.Fatalf("input-raw-buffer-size error: %v\n", err)
 	}
-	Settings.InputRAWConfig.BufferSize = inputRAWBufferSize
+	Settings.InputRAWConfig.bufferSize = inputRAWBufferSize
 
 	// libpcap has bug in mac os x. More info: https://github.com/buger/goreplay/issues/730
 	if Settings.InputRAWConfig.Expire == time.Second*2 && runtime.GOOS == "darwin" {
