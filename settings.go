@@ -107,6 +107,1052 @@ type AppSettings struct {
 	ConfigFile          string `json:"config-file" mapstructure:"config-file"`
 	ConfigServerAddress string `json:"config-server-address" mapstructure:"config-server-address"`
 	RemoteConfigHost    string `json:"config-remote-host" mapstructure:"config-remote-host"`
+
+	sync.RWMutex
+}
+
+func (a *AppSettings) verbose() bool {
+	a.RLock()
+	defer a.RUnlock()
+	return a.Verbose
+}
+
+func (a *AppSettings) setVerbose(verbose bool) {
+	a.Lock()
+	defer a.Unlock()
+	a.Verbose = verbose
+}
+
+func (a *AppSettings) debug() bool {
+	a.RLock()
+	defer a.RUnlock()
+	return a.Debug
+}
+
+func (a *AppSettings) setDebug(debug bool) {
+	a.Lock()
+	defer a.Unlock()
+	a.Debug = debug
+}
+
+func (a *AppSettings) stats() bool {
+	a.RLock()
+	defer a.RUnlock()
+	return a.Stats
+}
+
+func (a *AppSettings) setStats(stats bool) {
+	a.Lock()
+	defer a.Unlock()
+	a.Stats = stats
+}
+
+func (a *AppSettings) exitAfter() time.Duration {
+	a.RLock()
+	defer a.RUnlock()
+	return a.ExitAfter
+}
+
+func (a *AppSettings) setExitAfter(exitAfter time.Duration) {
+	a.Lock()
+	defer a.Unlock()
+	a.ExitAfter = exitAfter
+}
+
+func (a *AppSettings) splitOutput() bool {
+	a.RLock()
+	defer a.RUnlock()
+	return a.SplitOutput
+}
+
+func (a *AppSettings) setSplitOutput(splitOutput bool) {
+	a.Lock()
+	defer a.Unlock()
+	a.SplitOutput = splitOutput
+}
+
+func (a *AppSettings) recognizeTCPSessions() bool {
+	a.RLock()
+	defer a.RUnlock()
+	return a.RecognizeTCPSessions
+}
+
+func (a *AppSettings) setRecognizeTCPSessions(recognizeTCPSessions bool) {
+	a.Lock()
+	defer a.Unlock()
+	a.RecognizeTCPSessions = recognizeTCPSessions
+}
+
+func (a *AppSettings) pprof() string {
+	a.RLock()
+	defer a.RUnlock()
+	return a.Pprof
+}
+
+func (a *AppSettings) setPprof(pprof string) {
+	a.Lock()
+	defer a.Unlock()
+	a.Pprof = pprof
+}
+
+func (a *AppSettings) inputDummy() MultiOption {
+	a.RLock()
+	defer a.RUnlock()
+	return a.InputDummy
+}
+
+func (a *AppSettings) setInputDummy(inputDummy MultiOption) {
+	a.Lock()
+	defer a.Unlock()
+	a.InputDummy = inputDummy
+}
+
+func (a *AppSettings) outputDummy() MultiOption {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputDummy
+}
+
+func (a *AppSettings) setOutputDummy(outputDummy MultiOption) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputDummy = outputDummy
+}
+
+func (a *AppSettings) outputStdout() bool {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputStdout
+}
+
+func (a *AppSettings) setOutputStdout(outputStdout bool) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputStdout = outputStdout
+}
+
+func (a *AppSettings) outputNull() bool {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputNull
+}
+
+func (a *AppSettings) setOutputNull(outputNull bool) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputNull = outputNull
+}
+
+func (a *AppSettings) inputTCP() MultiOption {
+	a.RLock()
+	defer a.RUnlock()
+	return a.InputTCP
+}
+
+func (a *AppSettings) setInputTCP(inputTCP MultiOption) {
+	a.Lock()
+	defer a.Unlock()
+	a.InputTCP = inputTCP
+}
+
+func (a *AppSettings) inputTCPConfig() TCPInputConfig {
+	a.RLock()
+	defer a.RUnlock()
+	return a.InputTCPConfig
+}
+
+func (a *AppSettings) setInputTCPConfig(inputTCPConfig TCPInputConfig) {
+	a.Lock()
+	defer a.Unlock()
+	a.InputTCPConfig = inputTCPConfig
+}
+
+func (a *AppSettings) inputTCPConfigSecure() bool {
+	a.RLock()
+	defer a.RUnlock()
+	return a.InputTCPConfig.Secure
+}
+
+func (a *AppSettings) setInputTCPConfigSecure(secure bool) {
+	a.Lock()
+	defer a.Unlock()
+	a.InputTCPConfig.Secure = secure
+}
+
+func (a *AppSettings) inputTCPConfigCertificatePath() string {
+	a.RLock()
+	defer a.RUnlock()
+	return a.InputTCPConfig.CertificatePath
+}
+
+func (a *AppSettings) setInputTCPConfigCertificatePath(certificatePath string) {
+	a.Lock()
+	defer a.Unlock()
+	a.InputTCPConfig.CertificatePath = certificatePath
+}
+
+func (a *AppSettings) inputTCPConfigKeyPath() string {
+	a.RLock()
+	defer a.RUnlock()
+	return a.InputTCPConfig.KeyPath
+}
+
+func (a *AppSettings) setInputTCPConfigKeyPath(keyPath string) {
+	a.Lock()
+	defer a.Unlock()
+	a.InputTCPConfig.KeyPath = keyPath
+}
+
+func (a *AppSettings) outputTCP() MultiOption {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputTCP
+}
+
+func (a *AppSettings) setOutputTCP(outputTCP MultiOption) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputTCP = outputTCP
+}
+
+func (a *AppSettings) outputTCPConfig() TCPOutputConfig {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputTCPConfig
+}
+
+func (a *AppSettings) setOutputTCPConfig(outputTCPConfig TCPOutputConfig) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputTCPConfig = outputTCPConfig
+}
+
+func (a *AppSettings) outputTCPConfigSecure() bool {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputTCPConfig.Secure
+}
+
+func (a *AppSettings) setOutputTCPConfigSecure(secure bool) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputTCPConfig.Secure = secure
+}
+
+func (a *AppSettings) outputTCPConfigSticky() bool {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputTCPConfig.Sticky
+}
+
+func (a *AppSettings) setOutputTCPConfigSticky(sticky bool) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputTCPConfig.Sticky = sticky
+}
+
+func (a *AppSettings) outputTCPStats() bool {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputTCPStats
+}
+
+func (a *AppSettings) setOutputTCPStats(outputTCPStats bool) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputTCPStats = outputTCPStats
+}
+
+func (a *AppSettings) inputFile() MultiOption {
+	a.RLock()
+	defer a.RUnlock()
+	return a.InputFile
+}
+
+func (a *AppSettings) setInputFile(inputFile MultiOption) {
+	a.Lock()
+	defer a.Unlock()
+	a.InputFile = inputFile
+}
+
+func (a *AppSettings) inputFileLoop() bool {
+	a.RLock()
+	defer a.RUnlock()
+	return a.InputFileLoop
+}
+
+func (a *AppSettings) setInputFileLoop(inputFileLoop bool) {
+	a.Lock()
+	defer a.Unlock()
+	a.InputFileLoop = inputFileLoop
+}
+
+func (a *AppSettings) outputFile() MultiOption {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputFile
+}
+
+func (a *AppSettings) setOutputFile(outputFile MultiOption) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputFile = outputFile
+}
+
+func (a *AppSettings) outputFileConfigFlushInterval() time.Duration {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputFileConfig.FlushInterval
+}
+
+func (a *AppSettings) setOutputFileConfigFlushInterval(flushInterval time.Duration) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputFileConfig.FlushInterval = flushInterval
+}
+
+func (a *AppSettings) outputFileConfigQueueLimit() int64 {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputFileConfig.QueueLimit
+}
+
+func (a *AppSettings) setOutputFileConfigQueueLimit(queueLimit int64) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputFileConfig.QueueLimit = queueLimit
+}
+
+func (a *AppSettings) outputFileConfigAppend() bool {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputFileConfig.Append
+}
+
+func (a *AppSettings) setOutputFileConfigAppend(append bool) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputFileConfig.Append = append
+}
+
+func (a *AppSettings) outputFileConfigBufferPath() string {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputFileConfig.BufferPath
+}
+
+func (a *AppSettings) setOutputFileConfigBufferPath(bufferPath string) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputFileConfig.BufferPath = bufferPath
+}
+
+func (a *AppSettings) inputRAW() MultiOption {
+	a.RLock()
+	defer a.RUnlock()
+	return a.InputRAW
+}
+
+func (a *AppSettings) setInputRAW(inputRAW MultiOption) {
+	a.Lock()
+	defer a.Unlock()
+	a.InputRAW = inputRAW
+}
+
+func (a *AppSettings) inputRAWConfigEngine() string {
+	a.RLock()
+	defer a.RUnlock()
+	return a.InputRAWConfig.Engine
+}
+
+func (a *AppSettings) setInputRAWConfigEngine(engine string) {
+	a.Lock()
+	defer a.Unlock()
+	a.InputRAWConfig.Engine = engine
+}
+
+func (a *AppSettings) inputRAWConfigTrackResponse() bool {
+	a.RLock()
+	defer a.RUnlock()
+	return a.InputRAWConfig.TrackResponse
+}
+
+func (a *AppSettings) setInputRAWConfigTrackResponse(trackResponse bool) {
+	a.Lock()
+	defer a.Unlock()
+	a.InputRAWConfig.TrackResponse = trackResponse
+}
+
+func (a *AppSettings) inputRAWConfigRealIPHeader() string {
+	a.RLock()
+	defer a.RUnlock()
+	return a.InputRAWConfig.RealIPHeader
+}
+
+func (a *AppSettings) setInputRAWConfigRealIPHeader(realIPHeader string) {
+	a.Lock()
+	defer a.Unlock()
+	a.InputRAWConfig.RealIPHeader = realIPHeader
+}
+
+func (a *AppSettings) inputRAWConfigExpire() time.Duration {
+	a.RLock()
+	defer a.RUnlock()
+	return a.InputRAWConfig.Expire
+}
+
+func (a *AppSettings) setInputRAWConfigExpire(expire time.Duration) {
+	a.Lock()
+	defer a.Unlock()
+	a.InputRAWConfig.Expire = expire
+}
+
+func (a *AppSettings) inputRAWConfigProtocol() string {
+	a.RLock()
+	defer a.RUnlock()
+	return a.InputRAWConfig.Protocol
+}
+
+func (a *AppSettings) setInputRAWConfigProtocol(protocol string) {
+	a.Lock()
+	defer a.Unlock()
+	a.InputRAWConfig.Protocol = protocol
+}
+
+func (a *AppSettings) inputRAWConfigBpfFilter() string {
+	a.RLock()
+	defer a.RUnlock()
+	return a.InputRAWConfig.BpfFilter
+}
+
+func (a *AppSettings) setInputRAWConfigBpfFilter(bpfFilter string) {
+	a.Lock()
+	defer a.Unlock()
+	a.InputRAWConfig.BpfFilter = bpfFilter
+}
+
+func (a *AppSettings) inputRAWConfigTimestampType() string {
+	a.RLock()
+	defer a.RUnlock()
+	return a.InputRAWConfig.TimestampType
+}
+
+func (a *AppSettings) setInputRAWConfigTimestampType(timestampType string) {
+	a.Lock()
+	defer a.Unlock()
+	a.InputRAWConfig.TimestampType = timestampType
+}
+
+func (a *AppSettings) inputRAWConfigImmediateMode() bool {
+	a.RLock()
+	defer a.RUnlock()
+	return a.InputRAWConfig.ImmediateMode
+}
+
+func (a *AppSettings) setInputRAWConfigImmediateMode(immediateMode bool) {
+	a.Lock()
+	defer a.Unlock()
+	a.InputRAWConfig.ImmediateMode = immediateMode
+}
+
+func (a *AppSettings) inputRAWConfigOverrideSnapLen() bool {
+	a.RLock()
+	defer a.RUnlock()
+	return a.InputRAWConfig.OverrideSnapLen
+}
+
+func (a *AppSettings) setInputRAWConfigOverrideSnapLen(overrideSnapLen bool) {
+	a.Lock()
+	defer a.Unlock()
+	a.InputRAWConfig.OverrideSnapLen = overrideSnapLen
+}
+
+func (a *AppSettings) inputRAWConfigBufferSizeFlag() string {
+	a.RLock()
+	defer a.RUnlock()
+	return a.InputRAWConfig.BufferSizeFlag
+}
+
+func (a *AppSettings) setInputRAWConfigBufferSizeFlag(bufferSizeFlag string) {
+	a.Lock()
+	defer a.Unlock()
+	a.InputRAWConfig.BufferSizeFlag = bufferSizeFlag
+}
+
+func (a *AppSettings) outputFileSizeFlag() string {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputFileSizeFlag
+}
+
+func (a *AppSettings) setOutputFileSizeFlag(outputFileSizeFlag string) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputFileSizeFlag = outputFileSizeFlag
+}
+
+func (a *AppSettings) outputFileMaxSizeFlag() string {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputFileMaxSizeFlag
+}
+
+func (a *AppSettings) setOutputFileMaxSizeFlag(outputFileMaxSizeFlag string) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputFileMaxSizeFlag = outputFileMaxSizeFlag
+}
+
+func (a *AppSettings) copyBufferSizeFlag() string {
+	a.RLock()
+	defer a.RUnlock()
+	return a.CopyBufferSizeFlag
+}
+
+func (a *AppSettings) setCopyBufferSizeFlag(copyBufferSizeFlag string) {
+	a.Lock()
+	defer a.Unlock()
+	a.CopyBufferSizeFlag = copyBufferSizeFlag
+}
+
+func (a *AppSettings) middleware() string {
+	a.RLock()
+	defer a.RUnlock()
+	return a.Middleware
+}
+
+func (a *AppSettings) setMiddleware(middleware string) {
+	a.Lock()
+	defer a.Unlock()
+	a.Middleware = middleware
+}
+
+func (a *AppSettings) inputHTTP() MultiOption {
+	a.RLock()
+	defer a.RUnlock()
+	return a.InputHTTP
+}
+
+func (a *AppSettings) setInputHTTP(inputHTTP MultiOption) {
+	a.Lock()
+	defer a.Unlock()
+	a.InputHTTP = inputHTTP
+}
+
+func (a *AppSettings) outputHTTP() MultiOption {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputHTTP
+}
+
+func (a *AppSettings) setOutputHTTP(outputHTTP MultiOption) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputHTTP = outputHTTP
+}
+
+func (a *AppSettings) prettifyHTTP() bool {
+	a.RLock()
+	defer a.RUnlock()
+	return a.PrettifyHTTP
+}
+
+func (a *AppSettings) setPrettifyHTTP(prettifyHTTP bool) {
+	a.Lock()
+	defer a.Unlock()
+	a.PrettifyHTTP = prettifyHTTP
+}
+
+func (a *AppSettings) outputHTTPConfigRedirectLimit() int {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputHTTPConfig.RedirectLimit
+}
+
+func (a *AppSettings) setOutputHTTPConfigRedirectLimit(redirectLimit int) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputHTTPConfig.RedirectLimit = redirectLimit
+}
+
+func (a *AppSettings) outputHTTPConfigStats() bool {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputHTTPConfig.Stats
+}
+
+func (a *AppSettings) setOutputHTTPConfigStats(stats bool) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputHTTPConfig.Stats = stats
+}
+
+func (a *AppSettings) outputHTTPConfigWorkersMin() int {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputHTTPConfig.WorkersMin
+}
+
+func (a *AppSettings) setOutputHTTPConfigWorkersMin(workersMin int) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputHTTPConfig.WorkersMin = workersMin
+}
+
+func (a *AppSettings) outputHTTPConfigWorkersMax() int {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputHTTPConfig.WorkersMax
+}
+
+func (a *AppSettings) setOutputHTTPConfigWorkersMax(workersMax int) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputHTTPConfig.WorkersMax = workersMax
+}
+
+func (a *AppSettings) outputHTTPConfigStatsMs() int {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputHTTPConfig.StatsMs
+}
+
+func (a *AppSettings) setOutputHTTPConfigStatsMs(statsMs int) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputHTTPConfig.StatsMs = statsMs
+}
+
+func (a *AppSettings) outputHTTPConfigQueueLen() int {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputHTTPConfig.QueueLen
+}
+
+func (a *AppSettings) setOutputHTTPConfigQueueLen(queueLen int) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputHTTPConfig.QueueLen = queueLen
+}
+
+func (a *AppSettings) outputHTTPConfigElasticSearch() string {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputHTTPConfig.ElasticSearch
+}
+
+func (a *AppSettings) setOutputHTTPConfigElasticSearch(elasticSearch string) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputHTTPConfig.ElasticSearch = elasticSearch
+}
+
+func (a *AppSettings) outputHTTPConfigTimeout() time.Duration {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputHTTPConfig.Timeout
+}
+
+func (a *AppSettings) setOutputHTTPConfigTimeout(timeout time.Duration) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputHTTPConfig.Timeout = timeout
+}
+
+func (a *AppSettings) outputHTTPConfigOriginalHost() bool {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputHTTPConfig.OriginalHost
+}
+
+func (a *AppSettings) setOutputHTTPConfigOriginalHost(host bool) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputHTTPConfig.OriginalHost = host
+}
+
+func (a *AppSettings) outputHTTPConfigBufferSize() int {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputHTTPConfig.BufferSize
+}
+
+func (a *AppSettings) setOutputHTTPConfigBufferSize(bufferSize int) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputHTTPConfig.BufferSize = bufferSize
+}
+
+func (a *AppSettings) outputHTTPConfigCompatibilityMode() bool {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputHTTPConfig.CompatibilityMode
+}
+
+func (a *AppSettings) setOutputHTTPConfigCompatibilityMode(compatibilityMode bool) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputHTTPConfig.CompatibilityMode = compatibilityMode
+}
+
+func (a *AppSettings) outputHTTPConfigDebug() bool {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputHTTPConfig.Debug
+}
+
+func (a *AppSettings) setOutputHTTPConfigDebug(debug bool) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputHTTPConfig.Debug = debug
+}
+
+func (a *AppSettings) outputHTTPConfigTrackResponses() bool {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputHTTPConfig.TrackResponses
+}
+
+func (a *AppSettings) setOutputHTTPConfigTrackResponses(trackResponses bool) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputHTTPConfig.TrackResponses = trackResponses
+}
+
+func (a *AppSettings) outputBinary() MultiOption {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputBinary
+}
+
+func (a *AppSettings) setOutputBinary(outputBinary MultiOption) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputBinary = outputBinary
+}
+
+func (a *AppSettings) outputBinaryConfigWorkers() int {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputBinaryConfig.Workers
+}
+
+func (a *AppSettings) setOutputBinaryConfigWorkers(workers int) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputBinaryConfig.Workers = workers
+}
+
+func (a *AppSettings) outputBinaryConfigTimeout() time.Duration {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputBinaryConfig.Timeout
+}
+
+func (a *AppSettings) setOutputBinaryConfigTimeout(timeout time.Duration) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputBinaryConfig.Timeout = timeout
+}
+
+func (a *AppSettings) outputBinaryConfigBufferSize() int {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputBinaryConfig.BufferSize
+}
+
+func (a *AppSettings) setOutputBinaryConfigBufferSize(bufferSize int) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputBinaryConfig.BufferSize = bufferSize
+}
+
+func (a *AppSettings) outputBinaryConfigDebug() bool {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputBinaryConfig.Debug
+}
+
+func (a *AppSettings) setOutputBinaryConfigDebug(debug bool) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputBinaryConfig.Debug = debug
+}
+
+func (a *AppSettings) outputBinaryConfigTrackResponses() bool {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputBinaryConfig.TrackResponses
+}
+
+func (a *AppSettings) setOutputBinaryConfigTrackResponses(trackResponses bool) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputBinaryConfig.TrackResponses = trackResponses
+}
+
+func (a *AppSettings) modifierConfig() HTTPModifierConfig {
+	a.RLock()
+	defer a.RUnlock()
+	return a.ModifierConfig
+}
+
+func (a *AppSettings) setModifierConfig(config HTTPModifierConfig) {
+	a.Lock()
+	defer a.Unlock()
+	a.ModifierConfig = config
+}
+
+func (a *AppSettings) modifierConfigUrlNegativeRegexp() HTTPUrlRegexp {
+	a.RLock()
+	defer a.RUnlock()
+	return a.ModifierConfig.UrlNegativeRegexp
+}
+
+func (a *AppSettings) setModifierConfigUrlNegativeRegexp(UrlNegativeRegexp HTTPUrlRegexp) {
+	a.Lock()
+	defer a.Unlock()
+	a.ModifierConfig.UrlNegativeRegexp = UrlNegativeRegexp
+}
+
+func (a *AppSettings) modifierConfigUrlRegexp() HTTPUrlRegexp {
+	a.RLock()
+	defer a.RUnlock()
+	return a.ModifierConfig.UrlRegexp
+}
+
+func (a *AppSettings) setModifierConfigUrlRegexp(UrlRegexp HTTPUrlRegexp) {
+	a.Lock()
+	defer a.Unlock()
+	a.ModifierConfig.UrlRegexp = UrlRegexp
+}
+
+func (a *AppSettings) modifierConfigUrlRewrite() UrlRewriteMap {
+	a.RLock()
+	defer a.RUnlock()
+	return a.ModifierConfig.UrlRewrite
+}
+
+func (a *AppSettings) setModifierConfigUrlRewrite(UrlRewrite UrlRewriteMap) {
+	a.Lock()
+	defer a.Unlock()
+	a.ModifierConfig.UrlRewrite = UrlRewrite
+}
+
+func (a *AppSettings) modifierConfigHeaderRewrite() HeaderRewriteMap {
+	a.RLock()
+	defer a.RUnlock()
+	return a.ModifierConfig.HeaderRewrite
+}
+
+func (a *AppSettings) setModifierConfigHeaderRewrite(headerRewrite HeaderRewriteMap) {
+	a.Lock()
+	defer a.Unlock()
+	a.ModifierConfig.HeaderRewrite = headerRewrite
+}
+
+func (a *AppSettings) modifierConfigHeaderFilters() HTTPHeaderFilters {
+	a.RLock()
+	defer a.RUnlock()
+	return a.ModifierConfig.HeaderFilters
+}
+
+func (a *AppSettings) setModifierConfigHeaderFilters(HeaderFilters HTTPHeaderFilters) {
+	a.Lock()
+	defer a.Unlock()
+	a.ModifierConfig.HeaderFilters = HeaderFilters
+}
+
+func (a *AppSettings) modifierConfigHeaderNegativeFilters() HTTPHeaderFilters {
+	a.RLock()
+	defer a.RUnlock()
+	return a.ModifierConfig.HeaderNegativeFilters
+}
+
+func (a *AppSettings) setModifierConfigHeaderNegativeFilters(headerNegativeFilters HTTPHeaderFilters) {
+	a.Lock()
+	defer a.Unlock()
+	a.ModifierConfig.HeaderNegativeFilters = headerNegativeFilters
+}
+
+func (a *AppSettings) modifierConfigHeaderBasicAuthFilters() HTTPHeaderBasicAuthFilters {
+	a.RLock()
+	defer a.RUnlock()
+	return a.ModifierConfig.HeaderBasicAuthFilters
+}
+
+func (a *AppSettings) setModifierConfigHeaderBasicAuthFilters(headerBasicAuthFilters HTTPHeaderBasicAuthFilters) {
+	a.Lock()
+	defer a.Unlock()
+	a.ModifierConfig.HeaderBasicAuthFilters = headerBasicAuthFilters
+}
+
+func (a *AppSettings) modifierConfigHeaderHashFilters() HTTPHashFilters {
+	a.RLock()
+	defer a.RUnlock()
+	return a.ModifierConfig.HeaderHashFilters
+}
+
+func (a *AppSettings) setModifierConfigHeaderHashFilters(headerHashFilters HTTPHashFilters) {
+	a.Lock()
+	defer a.Unlock()
+	a.ModifierConfig.HeaderHashFilters = headerHashFilters
+}
+
+func (a *AppSettings) modifierConfigParamHashFilters() HTTPHashFilters {
+	a.RLock()
+	defer a.RUnlock()
+	return a.ModifierConfig.ParamHashFilters
+}
+
+func (a *AppSettings) setModifierConfigParamHashFilters(paramHashFilters HTTPHashFilters) {
+	a.Lock()
+	defer a.Unlock()
+	a.ModifierConfig.ParamHashFilters = paramHashFilters
+}
+
+func (a *AppSettings) modifierConfigParams() HTTPParams {
+	a.RLock()
+	defer a.RUnlock()
+	return a.ModifierConfig.Params
+}
+
+func (a *AppSettings) setModifierConfigParams(params HTTPParams) {
+	a.Lock()
+	defer a.Unlock()
+	a.ModifierConfig.Params = params
+}
+
+func (a *AppSettings) modifierConfigHeaders() HTTPHeaders {
+	a.RLock()
+	defer a.RUnlock()
+	return a.ModifierConfig.Headers
+}
+
+func (a *AppSettings) setModifierConfigHeaders(headers HTTPHeaders) {
+	a.Lock()
+	defer a.Unlock()
+	a.ModifierConfig.Headers = headers
+}
+
+func (a *AppSettings) modifierConfigMethods() HTTPMethods {
+	a.RLock()
+	defer a.RUnlock()
+	return a.ModifierConfig.Methods
+}
+
+func (a *AppSettings) setModifierConfigMethods(methods HTTPMethods) {
+	a.Lock()
+	defer a.Unlock()
+	a.ModifierConfig.Methods = methods
+}
+
+func (a *AppSettings) inputKafkaConfigHost() string {
+	a.RLock()
+	defer a.RUnlock()
+	return a.InputKafkaConfig.Host
+}
+
+func (a *AppSettings) setInputKafkaConfigHost(host string) {
+	a.Lock()
+	defer a.Unlock()
+	a.InputKafkaConfig.Host = host
+}
+
+func (a *AppSettings) inputKafkaConfigTopic() string {
+	a.RLock()
+	defer a.RUnlock()
+	return a.InputKafkaConfig.Topic
+}
+
+func (a *AppSettings) setInputKafkaConfigTopic(topic string) {
+	a.Lock()
+	defer a.Unlock()
+	a.InputKafkaConfig.Topic = topic
+}
+
+func (a *AppSettings) inputKafkaConfigUseJSON() bool {
+	a.RLock()
+	defer a.RUnlock()
+	return a.InputKafkaConfig.UseJSON
+}
+
+func (a *AppSettings) setInputKafkaConfigUseJSON(configJSON bool) {
+	a.Lock()
+	defer a.Unlock()
+	a.InputKafkaConfig.UseJSON = configJSON
+}
+
+func (a *AppSettings) outputKafkaConfigHost() string {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputKafkaConfig.Host
+}
+
+func (a *AppSettings) setOutputKafkaConfigHost(host string) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputKafkaConfig.Host = host
+}
+
+func (a *AppSettings) outputKafkaConfigTopic() string {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputKafkaConfig.Topic
+}
+
+func (a *AppSettings) setOutputKafkaConfigTopic(topic string) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputKafkaConfig.Topic = topic
+}
+
+func (a *AppSettings) outputKafkaConfigUseJSON() bool {
+	a.RLock()
+	defer a.RUnlock()
+	return a.OutputKafkaConfig.UseJSON
+}
+
+func (a *AppSettings) setOutputKafkaConfigUseJSON(outputKafkaConfigUseJSON bool) {
+	a.Lock()
+	defer a.Unlock()
+	a.OutputKafkaConfig.UseJSON = outputKafkaConfigUseJSON
+}
+
+func (a *AppSettings) configFile() string {
+	a.RLock()
+	defer a.RUnlock()
+	return a.ConfigFile
+}
+
+func (a *AppSettings) setConfigFile(configFile string) {
+	a.Lock()
+	defer a.Unlock()
+	a.ConfigFile = configFile
+}
+
+func (a *AppSettings) configServerAddress() string {
+	a.RLock()
+	defer a.RUnlock()
+	return a.ConfigServerAddress
+}
+
+func (a *AppSettings) setConfigServerAddress(configServerAddress string) {
+	a.Lock()
+	defer a.Unlock()
+	a.ConfigServerAddress = configServerAddress
+}
+
+func (a *AppSettings) remoteConfigHost() string {
+	a.RLock()
+	defer a.RUnlock()
+	return a.RemoteConfigHost
+}
+
+func (a *AppSettings) setRemoteConfigHost(remoteConfigHost string) {
+	a.Lock()
+	defer a.Unlock()
+	a.RemoteConfigHost = remoteConfigHost
 }
 
 var nestedPathMap = make(map[string]string)
@@ -201,6 +1247,7 @@ func readAndUpdateConfig(body io.ReadCloser) error {
 	if err != nil {
 		return err
 	}
+
 	Settings = t
 	newConfig, err := json.Marshal(Settings)
 	if err != nil {
@@ -218,8 +1265,10 @@ func updateConfig(respBody []byte) {
 	if err := json.Unmarshal(respBody, &t); err != nil {
 		return
 	}
-	Settings = t
+	Settings.Lock()
+	Settings = t //W
 	newConfig, err := json.Marshal(Settings)
+	Settings.Unlock()
 	if err != nil {
 		return
 	}
@@ -239,14 +1288,18 @@ func flagz(res http.ResponseWriter, req *http.Request) {
 			} else {
 				viper.Set(k, v[0])
 			}
+			Settings.Lock()
 			viper.Unmarshal(&Settings)
+			Settings.Unlock()
 		}
 	}
 
 	if req.Method == "POST" {
 		res.Write([]byte(readAndUpdateConfig(req.Body).Error()))
 	}
+	Settings.RLock()
 	data, _ := json.MarshalIndent(Settings, "", " ")
+	Settings.RUnlock()
 	res.Write(data)
 
 	for k, v := range req.URL.Query() {
@@ -257,14 +1310,18 @@ func flagz(res http.ResponseWriter, req *http.Request) {
 			} else {
 				viper.Set(k, v[0])
 			}
+			Settings.Lock()
 			viper.Unmarshal(&Settings)
+			Settings.Unlock()
 		}
 	}
 
 	if req.Method == "POST" {
 		res.Write([]byte(readAndUpdateConfig(req.Body).Error()))
 	}
+	Settings.RLock()
 	data, _ = json.MarshalIndent(Settings, "", " ")
+	Settings.RUnlock()
 	res.Write(data)
 
 }
@@ -449,12 +1506,14 @@ func init() {
 	}
 	viper.Unmarshal(&Settings)
 
-	if Settings.RemoteConfigHost != "" {
+	if Settings.remoteConfigHost() != "" {
 		log.Printf("Starting to read remote config from: %s", Settings.RemoteConfigHost)
 		go pollRemoteConfig()
 	}
 
-	fmt.Printf("Using config: %s\n", viper.ConfigFileUsed())
+	if Settings.verbose() {
+		fmt.Printf("Using config: %s\n", viper.ConfigFileUsed())
+	}
 
 	initConfigServer()
 
@@ -469,7 +1528,8 @@ func pollRemoteConfig() {
 		}
 		req.Header.Set("Content-Type", "application/json")
 
-		client := &http.Client{}
+		client := &http.Client{Timeout: 5 * time.Second}
+
 		resp, err := client.Do(req)
 		if err != nil {
 			log.Printf("Error while getting config from remote server., %s", err)
@@ -484,7 +1544,6 @@ func pollRemoteConfig() {
 		}
 
 		updateConfig(respBody)
-		resp.Body.Close()
 		time.Sleep(time.Second)
 	}
 }
