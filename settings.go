@@ -1297,10 +1297,6 @@ func flagz(res http.ResponseWriter, req *http.Request) {
 	if req.Method == "POST" {
 		res.Write([]byte(readAndUpdateConfig(req.Body).Error()))
 	}
-	Settings.RLock()
-	data, _ := json.MarshalIndent(Settings, "", " ")
-	Settings.RUnlock()
-	res.Write(data)
 
 	for k, v := range req.URL.Query() {
 		if len(v) == 1 {
@@ -1320,7 +1316,7 @@ func flagz(res http.ResponseWriter, req *http.Request) {
 		res.Write([]byte(readAndUpdateConfig(req.Body).Error()))
 	}
 	Settings.RLock()
-	data, _ = json.MarshalIndent(Settings, "", " ")
+	data, _ := json.MarshalIndent(Settings, "", " ")
 	Settings.RUnlock()
 	res.Write(data)
 
