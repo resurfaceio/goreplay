@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -257,41 +258,103 @@ func BenchmarkPcapFile(b *testing.B) {
 	b.Logf("%d/%d packets in %s", pckts, b.N, time.Since(now))
 }
 
-func BenchmarkPcap(b *testing.B) {
-	now := time.Now()
-	var err error
+// used to benchmark sock engine
+var buf [1024]byte
 
-	l, err := NewListener(LoopBack.Name, 8000, "", EnginePcap, true)
+func init() {
+	for i := 0; i < len(buf); i++ {
+		buf[i] = 0xff
+	}
+}
+
+func handler(n, counter *int32) Handler {
+	return func(p gopacket.Packet) {
+		nn := int32(len(p.Data()))
+		atomic.AddInt32(n, nn)
+		atomic.AddInt32(counter, 1)
+	}
+}
+
+func BenchmarkPcap(b *testing.B) {
+	var err error
+	n := new(int32)
+	counter := new(int32)
+	l, err := NewListener(LoopBack.Name, 8000, "", EnginePcap, false)
 	if err != nil {
-		b.Errorf("expected error to be nil, got %v", err)
+		b.Error(err)
 		return
 	}
+	l.PcapOptions.BPFFilter = "udp dst port 8000 and host 127.0.0.1"
 	err = l.Activate()
 	if err != nil {
-		b.Errorf("expected error to be nil, got %v", err)
+		b.Error(err)
 		return
 	}
-	defer l.Handles[LoopBack.Name].(*pcap.Handle).Close()
-	for i := 0; i < b.N; i++ {
-		_, _ = net.Dial("tcp", "127.0.0.1:8000")
+	errCh := l.ListenBackground(context.Background(), handler(n, counter))
+	select {
+	case <-l.Reading:
+	case err = <-errCh:
+		b.Error(err)
+		return
 	}
-	sts, _ := l.Handles[LoopBack.Name].(*pcap.Handle).Stats()
-	b.Logf("%d packets in %s", sts.PacketsReceived, time.Since(now))
+	var conn net.Conn
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		conn, err = net.Dial("udp", "127.0.0.1:8000")
+		if err != nil {
+			b.Error(err)
+			return
+		}
+		b.StartTimer()
+		_, err = conn.Write(buf[:])
+		if err != nil {
+			b.Error(err)
+			return
+		}
+	}
+	b.ReportMetric(float64(atomic.LoadInt32(n)), "buf")
+	b.ReportMetric(float64(atomic.LoadInt32(counter)), "packets")
 }
 
 func BenchmarkRawSocket(b *testing.B) {
-	now := time.Now()
 	var err error
-
-	l, err := NewListener(LoopBack.Name, 0, "", EngineRawSocket, true)
-	err = l.Activate()
+	n := new(int32)
+	counter := new(int32)
+	l, err := NewListener(LoopBack.Name, 8000, "", EngineRawSocket, false)
 	if err != nil {
+		b.Error(err)
 		return
 	}
-	defer l.Handles[LoopBack.Name].(*SockRaw).Close()
-	for i := 0; i < b.N; i++ {
-		_, _ = net.Dial("tcp", "127.0.0.1:8000")
+	l.PcapOptions.BPFFilter = "udp dst port 8000 and host 127.0.0.1"
+	err = l.Activate()
+	if err != nil {
+		b.Error(err)
+		return
 	}
-	sts, _ := l.Handles[LoopBack.Name].(*SockRaw).Stats()
-	b.Logf("%d packets in %s", sts.Packets, time.Since(now))
+	errCh := l.ListenBackground(context.Background(), handler(n, counter))
+	select {
+	case <-l.Reading:
+	case err = <-errCh:
+		b.Error(err)
+		return
+	}
+	var conn net.Conn
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		conn, err = net.Dial("udp", "127.0.0.1:8000")
+		if err != nil {
+			b.Error(err)
+			return
+		}
+		b.StartTimer()
+		_, err = conn.Write(buf[:])
+		if err != nil {
+			b.Error(err)
+			return
+		}
+	}
+	b.ReportMetric(float64(atomic.LoadInt32(n)), "buf")
+	b.ReportMetric(float64(atomic.LoadInt32(counter)), "packets")
 }
