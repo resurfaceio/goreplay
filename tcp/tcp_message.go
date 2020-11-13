@@ -1,13 +1,13 @@
 package tcp
 
 import (
-	"bytes"
-	"crypto/sha1"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"sort"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/buger/goreplay/size"
 	"github.com/google/gopacket"
@@ -31,7 +31,7 @@ type Stats struct {
 type Message struct {
 	packets []*Packet
 	done    chan bool
-	buf     bytes.Buffer
+	pool    *MessagePool
 	Stats
 }
 
@@ -45,35 +45,48 @@ func NewMessage(srcAddr, dstAddr string, ipVersion uint8) (m *Message) {
 	return
 }
 
-// UUID the unique id of a TCP session it is not granted to be unique!
+// UUID returns the UUID of a TCP request and its response.
 func (m *Message) UUID() []byte {
-	var src, dst string
-	if m.IsIncoming {
-		src = m.SrcAddr
-		dst = m.DstAddr
-	} else {
-		src = m.DstAddr
-		dst = m.SrcAddr
+	var key uint64
+	pckt := m.packets[0]
+
+	// check if response or request have generated the ID before.
+	if m.pool.uuids != nil {
+		lst := len(pckt.SrcIP) - 4
+		if m.IsIncoming {
+			key = uint64(pckt.SrcPort)<<48 | uint64(pckt.DstPort)<<32 |
+				uint64(_uint32(&pckt.SrcIP[lst]))
+		} else {
+			key = uint64(pckt.DstPort)<<48 | uint64(pckt.SrcPort)<<32 |
+				uint64(_uint32(&pckt.DstIP[lst]))
+		}
+		if uuidHex, ok := m.pool.uuids[key]; ok {
+			delete(m.pool.uuids, key)
+			return uuidHex
+		}
 	}
 
-	length := len(src) + len(dst)
-	uuid := make([]byte, length)
-	copy(uuid, src)
-	copy(uuid[len(src):], dst)
-	sha := sha1.Sum(uuid)
-	uuid = make([]byte, 40)
-	hex.Encode(uuid, sha[:])
-
-	return uuid
+	id := make([]byte, 12, 12)
+	binary.BigEndian.PutUint32(id, pckt.Seq)
+	tStamp := m.End.UnixNano()
+	for i, v := range _8byte(&tStamp) {
+		id[i+4] = v
+	}
+	uuidHex := make([]byte, 24, 24)
+	hex.Encode(uuidHex[:], id[:])
+	if m.pool.uuids != nil {
+		if len(m.pool.uuids) >= 1000 {
+			m.pool.cleanUUIDs()
+		}
+		m.pool.uuids[key] = uuidHex
+	}
+	return uuidHex
 }
 
 func (m *Message) add(pckt *Packet) {
 	m.Length += len(pckt.Payload)
 	m.LostData += int(pckt.Lost)
 	m.packets = append(m.packets, pckt)
-	if len(pckt.Payload) > 0 {
-		m.buf.Write(pckt.Payload)
-	}
 	m.End = pckt.Timestamp
 }
 
@@ -84,7 +97,16 @@ func (m *Message) Packets() []*Packet {
 
 // Data returns data in this message
 func (m *Message) Data() []byte {
-	return m.buf.Bytes()
+	buf := make([]byte, m.Length, m.Length)
+	var n, nn int
+	for _, p := range m.packets {
+		if len(p.Payload) < 1 {
+			continue
+		}
+		nn = copy(buf[n:], p.Payload)
+		n += nn
+	}
+	return buf
 }
 
 // Sort a helper to sort packets
@@ -104,7 +126,7 @@ type Debugger func(int, ...interface{})
 type HintEnd func(*Message) bool
 
 // HintStart hints the pool to start the reassembling the message, see MessagePool.Start
-// when set, it will be used instead of checking SYN flag
+// when set, it will be called after checking SYN flag
 type HintStart func(*Packet) (IsIncoming, IsOutgoing bool)
 
 // MessagePool holds data of all tcp messages in progress(still receiving/sending packets).
@@ -114,6 +136,7 @@ type MessagePool struct {
 	debug         Debugger
 	maxSize       size.Size // maximum message size, default 5mb
 	pool          map[uint64]*Message
+	uuids         map[uint64][]byte
 	handler       Handler
 	messageExpire time.Duration // the maximum time to wait for the final packet, minimum is 100ms
 	End           HintEnd
@@ -141,19 +164,18 @@ func NewMessagePool(maxSize size.Size, messageExpire time.Duration, debugger Deb
 func (pool *MessagePool) Handler(packet gopacket.Packet) {
 	var in, out bool
 	pckt, err := ParsePacket(packet)
-	if err != nil || pckt == nil {
+	if err != nil {
 		go pool.say(4, fmt.Sprintf("error decoding packet(%dBytes):%s\n", packet.Metadata().CaptureLength, err))
+		return
+	}
+	if pckt == nil {
 		return
 	}
 	pool.Lock()
 	defer pool.Unlock()
-	lst := 3
-	if pckt.Version == 6 {
-		lst = 15
-	}
+	lst := len(pckt.SrcIP) - 4
 	key := uint64(pckt.SrcPort)<<48 | uint64(pckt.DstPort)<<32 |
-		uint64(pckt.SrcIP[lst])<<24 | uint64(pckt.SrcIP[lst-1])<<16 |
-		uint64(pckt.SrcIP[lst-2])<<8 | uint64(pckt.SrcIP[lst-3])
+		uint64(_uint32(&pckt.SrcIP[lst]))
 	m, ok := pool.pool[key]
 	if pckt.RST {
 		if ok {
@@ -161,8 +183,7 @@ func (pool *MessagePool) Handler(packet gopacket.Packet) {
 			<-m.done
 		}
 		key = uint64(pckt.DstPort)<<48 | uint64(pckt.SrcPort)<<32 |
-			uint64(pckt.DstIP[lst])<<24 | uint64(pckt.DstIP[lst-1])<<16 |
-			uint64(pckt.DstIP[lst-2])<<8 | uint64(pckt.DstIP[lst-3])
+			uint64(_uint32(&pckt.DstIP[lst]))
 		m, ok = pool.pool[key]
 		if ok {
 			m.done <- true
@@ -188,8 +209,32 @@ func (pool *MessagePool) Handler(packet gopacket.Packet) {
 	m.IsIncoming = in
 	pool.pool[key] = m
 	m.Start = pckt.Timestamp
+	m.pool = pool
 	go pool.dispatch(key, m)
 	pool.addPacket(m, pckt)
+}
+
+// MatchUUID instructs the pool to use same UUID for request and responses
+// this function should be called at initial stage of the pool
+func (pool *MessagePool) MatchUUID(match bool) {
+	if match {
+		pool.uuids = make(map[uint64][]byte)
+		return
+	}
+	pool.uuids = nil
+}
+
+// run GC on UUID map
+func (pool *MessagePool) cleanUUIDs() {
+	var tStamp int64
+	now := time.Now().UnixNano()
+	for k, v := range pool.uuids {
+		// there is a timestamp wrapped in every ID
+		tStamp = _int64(&v[4])
+		if time.Duration(now-tStamp) >= pool.messageExpire {
+			delete(pool.uuids, k)
+		}
+	}
 }
 
 func (pool *MessagePool) dispatch(key uint64, m *Message) {
@@ -217,10 +262,20 @@ func (pool *MessagePool) addPacket(m *Message, pckt *Packet) {
 	}
 	m.add(pckt)
 	switch {
+
+	// if one of this cases matches, we dispatch the message
 	case trunc >= 0:
 	case pckt.FIN:
-	case pool.End != nil && pool.End(m):
 	default:
+		if pool.End != nil {
+			if pool.End(m) {
+				break
+			}
+		} else if m.Length > 0 && len(pckt.Payload) < 1 {
+			// generally, data are chunked and sent sequentially in packets, if one packets is empty we assume
+			// that it's just an acknowledgement packet after the final chunk.
+			break
+		}
 		return
 	}
 	m.done <- true
@@ -232,4 +287,18 @@ func (pool *MessagePool) say(level int, args ...interface{}) {
 	if pool.debug != nil {
 		pool.debug(level, args...)
 	}
+}
+
+type void = unsafe.Pointer
+
+func _uint32(b *byte) uint32 {
+	return *(*uint32)(void(b))
+}
+
+func _int64(b *byte) int64 {
+	return *(*int64)(void(b))
+}
+
+func _8byte(i *int64) [8]byte {
+	return *(*[8]byte)(void(i))
 }

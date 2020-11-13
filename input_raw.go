@@ -149,8 +149,10 @@ func (i *RAWInput) listen(address string) {
 		log.Fatal(err)
 	}
 	pool := tcp.NewMessagePool(i.CopyBufferSize, i.Expire, Debug, i.handler)
-	pool.End = endHint
-	pool.Start = startHint
+	pool.MatchUUID(i.TrackResponse)
+	if i.Protocol == ProtocolHTTP {
+		pool.Start = http1StartHint
+	}
 	var ctx context.Context
 	ctx, i.cancelListener = context.WithCancel(context.Background())
 	errCh := i.listener.ListenBackground(ctx, pool.Handler)
@@ -196,14 +198,10 @@ func (i *RAWInput) addStats(mStats tcp.Stats) {
 	i.Unlock()
 }
 
-func startHint(pckt *tcp.Packet) (isIncoming, isOutgoing bool) {
+func http1StartHint(pckt *tcp.Packet) (isIncoming, isOutgoing bool) {
 	isIncoming = proto.HasRequestTitle(pckt.Payload)
 	if isIncoming {
 		return
 	}
 	return false, proto.HasResponseTitle(pckt.Payload)
-}
-
-func endHint(m *tcp.Message) bool {
-	return proto.HasFullPayload(m.Data())
 }
