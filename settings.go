@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -236,7 +237,11 @@ func initGorDir() {
 		if p, err = os.UserHomeDir(); err != nil {
 			goto errLog
 		}
-		p = filepath.Join(p, ".gor")
+		if !strings.Contains(p, "root") {
+			p = filepath.Join(p, ".gor")
+		} else {
+			p = ".gor"
+		}
 	}
 	if err = os.MkdirAll(p, os.ModeDir|os.ModePerm); err != nil {
 		goto errLog

@@ -101,7 +101,7 @@ func NewRAWInput(address string, config RAWInputConfig) (i *RAWInput) {
 		i.st = initializeStatWriter("input_raw_message.csv", "type: GOR_STAT\ntitle: raw messages info")
 		statsWriteRecord(i.st, []string{
 			"length", "lostdata", "source", "destination", "ipversion",
-			"isincoming", "timedout", "truncated", "timestamp", "latency",
+			"timedout", "truncated", "id",
 		}, "[INPUT-RAW]")
 	}
 
@@ -125,17 +125,19 @@ func (i *RAWInput) PluginRead() (*Message, error) {
 		msg.Data = msgTCP.Data()
 	}
 	var msgType byte = ResponsePayload
-	timestamp, latency := msgTCP.Start.UnixNano(), msgTCP.End.UnixNano()-msgTCP.Start.UnixNano()
+	timestamp := msgTCP.Start.UnixNano()
+	latency := msgTCP.End.UnixNano() - timestamp
 	if msgTCP.IsIncoming {
 		msgType = RequestPayload
 		if i.RealIPHeader != "" {
 			msg.Data = proto.SetHeader(msg.Data, []byte(i.RealIPHeader), []byte(msgTCP.SrcAddr))
 		}
 	}
-	msg.Meta = payloadHeader(msgType, msgTCP.UUID(), timestamp, latency)
+	id := msgTCP.UUID()
+	msg.Meta = payloadHeader(msgType, id, timestamp, latency)
 
 	if i.Stats && i.st != nil {
-		statsWriteRecord(i.st, getStats(msgTCP.Stats, timestamp, latency), "[INPUT-RAW]")
+		statsWriteRecord(i.st, getStats(msgTCP.Stats, id), "[INPUT-RAW]")
 	}
 	msgTCP = nil
 	return &msg, nil
@@ -177,31 +179,25 @@ func (i *RAWInput) String() string {
 }
 
 // GetStats returns the stats so far and reset the stats
-func getStats(stat tcp.Stats, timestamp, latency int64) []string {
-	var s [10]string
+func getStats(stat tcp.Stats, id []byte) []string {
+	var s [8]string
 
 	s[0] = strconv.Itoa(stat.Length)    // length
 	s[1] = strconv.Itoa(stat.LostData)  // lostdata
 	s[2] = stat.SrcAddr                 // source
 	s[3] = stat.DstAddr                 // destination
 	s[4] = string(stat.IPversion + '0') // ipversion
-	if stat.IsIncoming {                // isincoming
+	if stat.TimedOut {                  // timedout
 		s[5] = "true"
 	} else {
 		s[5] = "false"
 	}
-	if stat.TimedOut { // timedout
+	if stat.Truncated { // truncated
 		s[6] = "true"
 	} else {
 		s[6] = "false"
 	}
-	if stat.Truncated { // truncated
-		s[7] = "true"
-	} else {
-		s[7] = "false"
-	}
-	s[8] = strconv.FormatInt(timestamp, 10) // timestamp
-	s[9] = strconv.FormatInt(latency, 10)   // latency
+	s[7] = string(id)
 	return s[:]
 }
 
