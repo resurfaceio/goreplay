@@ -6,8 +6,8 @@ import (
 
 // DummyInput used for debugging. It generate 1 "GET /"" request per second.
 type DummyInput struct {
-	data chan []byte
-	quit chan struct{}
+	data    chan []byte
+	quit    chan struct{}
 	Service string
 }
 

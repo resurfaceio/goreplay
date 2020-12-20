@@ -73,6 +73,7 @@ type ServiceSettings struct {
 
 type AppSettings struct {
 	ServiceSettings `mapstructure:",squash"`
+	Service         string `mapstructure:",service"`
 
 	Services map[string]ServiceSettings `json:"services" mapstructure:"services"`
 }
@@ -97,6 +98,8 @@ func init() {
 	} else {
 		Settings.ExitAfter = 5 * time.Minute
 	}
+
+	flag.StringVar(&Settings.Service, "service", "", "Identified of currenlty capture service. Can be used if you need to record and replay mutiple services at once.")
 
 	flag.BoolVar(&Settings.SplitOutput, "split-output", false, "By default each output gets same traffic. If set to `true` it splits traffic equally among all outputs.")
 	flag.BoolVar(&Settings.RecognizeTCPSessions, "recognize-tcp-sessions", false, "[PRO] If turned on http output will create separate worker for each TCP session. Splitting output will session based as well.")
