@@ -3,6 +3,7 @@ package tcp
 import (
 	"bytes"
 	"encoding/binary"
+	"runtime"
 	"testing"
 	"time"
 
@@ -13,7 +14,7 @@ import (
 )
 
 func generateHeader(seq uint32, length uint16) []byte {
-	hdr := make([]byte, 4+24+24, 4+24+24)
+	hdr := make([]byte, 4+24+24)
 	binary.BigEndian.PutUint32(hdr, uint32(layers.ProtocolFamilyIPv4))
 
 	ip := hdr[4:]
@@ -167,7 +168,7 @@ func TestMessageTimeoutReached(t *testing.T) {
 	packets[0].TransLayer[13] = 2 // SYN flag
 	p := NewMessagePool(1<<20, 0, nil, func(m *Message) { mssg <- m })
 	p.Handler(packets[0])
-	time.Sleep(time.Millisecond * 200)
+	time.Sleep(time.Millisecond * 400)
 	p.Handler(packets[1])
 	m := <-mssg
 	if m.Length != 63<<10 {
@@ -235,6 +236,7 @@ func BenchmarkPacketParseAndSort(b *testing.B) {
 }
 
 func BenchmarkMessageParserWithoutHint(b *testing.B) {
+	runtime.GOMAXPROCS(2)
 	var mssg = make(chan *Message, 1)
 	var chunk = []byte("111111111111111111111111111111")
 	packets := GetPackets(1, 1000, chunk)
