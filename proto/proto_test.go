@@ -388,39 +388,39 @@ func TestHasRequestTitle(t *testing.T) {
 
 func TestCheckChunks(t *testing.T) {
 	var m = "4\r\nWiki\r\n5\r\npedia\r\nE\r\n in\r\n\r\nchunks.\r\n0\r\n\r\n"
-	chunkEnd := CheckChunked([]byte(m))
-	expected := bytes.Index([]byte(m), []byte("0\r\n")) + 5
+	chunkEnd, _ := CheckChunked([]byte(m))
+	expected := len(m)
 	if chunkEnd != expected {
 		t.Errorf("expected %d to equal %d", chunkEnd, expected)
 	}
 
 	m = "7\r\nMozia\r\n9\r\nDeveloper\r\n7\r\nNetwork\r\n0\r\n\r\n"
-	chunkEnd = CheckChunked([]byte(m))
-	if chunkEnd != -1 {
-		t.Errorf("expected %d to equal %d", chunkEnd, -1)
+	chunkEnd, _ = CheckChunked([]byte(m))
+	if chunkEnd != 0 {
+		t.Errorf("expected %d to equal %d", chunkEnd, 0)
 	}
 
 	// with trailers
 	m = "4\r\nWiki\r\n5\r\npedia\r\nE\r\n in\r\n\r\nchunks.\r\n0\r\n\r\nEXpires"
-	chunkEnd = CheckChunked([]byte(m))
-	expected = bytes.Index([]byte(m), []byte("0\r\n")) + 5
+	chunkEnd, _ = CheckChunked([]byte(m))
+	expected = len(m) - 7
 	if chunkEnd != expected {
 		t.Errorf("expected %d to equal %d", chunkEnd, expected)
 	}
 
-	// last chunk inside the the body
+	// last chunk inside the body
 	// with trailers
 	m = "4\r\nWiki\r\n5\r\npedia\r\nE\r\n in\r\n\r\nchunks.\r\n3\r\n0\r\n\r\n0\r\n\r\nEXpires"
-	chunkEnd = CheckChunked([]byte(m))
-	expected = bytes.Index([]byte(m), []byte("0\r\n")) + 10
+	chunkEnd, _ = CheckChunked([]byte(m))
+	expected = len(m) - 7
 	if chunkEnd != expected {
 		t.Errorf("expected %d to equal %d", chunkEnd, expected)
 	}
 
 	// checks with chucks-extensions
 	m = "4\r\nWiki\r\n5\r\npedia\r\nE; name='quoted string'\r\n in\r\n\r\nchunks.\r\n3\r\n0\r\n\r\n0\r\n\r\nEXpires"
-	chunkEnd = CheckChunked([]byte(m))
-	expected = bytes.Index([]byte(m), []byte("0\r\n")) + 10
+	chunkEnd, _ = CheckChunked([]byte(m))
+	expected = len(m) - 7
 	if chunkEnd != expected {
 		t.Errorf("expected %d to equal %d", chunkEnd, expected)
 	}
@@ -484,16 +484,7 @@ func TestHasFullPayload(t *testing.T) {
 }
 
 func BenchmarkHasFullPayload(b *testing.B) {
-	var buf bytes.Buffer
-	buf.Write([]byte("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nTransfer-Encoding: chunked\r\n\r\n"))
-	var chunk = []byte("1e\r\n111111111111111111111111111111\r\n")
-	for i := 0; i < 5000; i++ {
-		buf.Write(chunk)
-	}
-	buf.Write([]byte("0\r\n\r\n"))
-	data := buf.Bytes()
-	b.ResetTimer() // ignores the upper initialization
-	b.ReportMetric(float64(5000), "chunks/op")
+	data := []byte("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nTransfer-Encoding: chunked\r\n\r\n1e\r\n111111111111111111111111111111\r\n0\r\n\r\n")
 	for i := 0; i < b.N; i++ {
 		if !HasFullPayload(data, nil) {
 			b.Fail()
