@@ -149,15 +149,15 @@ func (i *RAWInput) listen(address string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	pool := tcp.NewMessagePool(i.CopyBufferSize, i.Expire, Debug, i.handler)
-	pool.MatchUUID(i.TrackResponse)
+	parser := tcp.NewMessageParser(i.CopyBufferSize, i.Expire, Debug, i.messageEmitter)
+	parser.MatchUUID(i.TrackResponse)
 	if i.Protocol == ProtocolHTTP {
-		pool.Start = http1StartHint
-		pool.End = http1EndHint
+		parser.Start = http1StartHint
+		parser.End = http1EndHint
 	}
 	var ctx context.Context
 	ctx, i.cancelListener = context.WithCancel(context.Background())
-	errCh := i.listener.ListenBackground(ctx, pool.Handler)
+	errCh := i.listener.ListenBackground(ctx, parser.PacketHandler)
 	<-i.listener.Reading
 	Debug(1, i)
 	go func() {
@@ -166,7 +166,7 @@ func (i *RAWInput) listen(address string) {
 	}()
 }
 
-func (i *RAWInput) handler(m *tcp.Message) {
+func (i *RAWInput) messageEmitter(m *tcp.Message) {
 	i.message <- m
 }
 

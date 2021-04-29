@@ -432,13 +432,13 @@ func CheckChunked(buf []byte) (chunkEnd int, full bool) {
 	return
 }
 
-// Feedback is an interface used to provide feedback or store dummy data for future use
-type Feedback interface {
-	SetFeedback(interface{})
-	Feedback() interface{}
+// Message is an interface used to provide feedback or store dummy data for future use
+type Message interface {
+	SetProtocolState(interface{})
+	ProtocolState() interface{}
 }
 
-type feedback struct {
+type httpProto struct {
 	body        int // body index
 	hdrStart    int
 	hdrParsed   bool // we checked necessary headers
@@ -449,17 +449,17 @@ type feedback struct {
 }
 
 // HasFullPayload checks if this message has full or valid payloads and returns true.
-// Feedback param is optional but recommended on cases where 'data' is storing
+// Message param is optional but recommended on cases where 'data' is storing
 // partial-to-full stream of bytes(packets).
-func HasFullPayload(data []byte, f Feedback) bool {
-	var feed *feedback
-	if f != nil {
-		feed, _ = f.Feedback().(*feedback)
+func HasFullPayload(data []byte, m Message) bool {
+	var feed *httpProto
+	if m != nil {
+		feed, _ = m.ProtocolState().(*httpProto)
 	}
 	if feed == nil {
-		feed = new(feedback)
-		if f != nil {
-			f.SetFeedback(feed)
+		feed = new(httpProto)
+		if m != nil {
+			m.SetProtocolState(feed)
 		}
 	}
 	if feed.hdrStart < 1 {

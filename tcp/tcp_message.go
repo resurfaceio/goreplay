@@ -29,7 +29,7 @@ type Stats struct {
 // Message is the representation of a tcp message
 type Message struct {
 	packets  []*Packet
-	pool     *MessagePool
+	parser   *MessageParser
 	buf      *bytes.Buffer
 	feedback interface{}
 	Stats
@@ -51,7 +51,7 @@ func (m *Message) UUID() []byte {
 	pckt := m.packets[0]
 
 	// check if response or request have generated the ID before.
-	if m.pool.uuids != nil {
+	if m.parser.uuids != nil {
 		lst := len(pckt.SrcIP) - 4
 		if m.IsIncoming {
 			key = uint64(pckt.SrcPort)<<48 | uint64(pckt.DstPort)<<32 |
@@ -60,23 +60,23 @@ func (m *Message) UUID() []byte {
 			key = uint64(pckt.DstPort)<<48 | uint64(pckt.SrcPort)<<32 |
 				uint64(_uint32(pckt.DstIP[lst:]))
 		}
-		if uuidHex, ok := m.pool.uuids[key]; ok {
-			delete(m.pool.uuids, key)
+		if uuidHex, ok := m.parser.uuids[key]; ok {
+			delete(m.parser.uuids, key)
 			return uuidHex
 		}
 	}
 
 	id := make([]byte, 12)
 	binary.BigEndian.PutUint32(id, pckt.Seq)
-	tStamp := m.End.UnixNano()
-	binary.BigEndian.PutUint64(id[4:], uint64(tStamp))
+	now := m.End.UnixNano()
+	binary.BigEndian.PutUint64(id[4:], uint64(now))
 	uuidHex := make([]byte, 24)
 	hex.Encode(uuidHex[:], id[:])
-	if m.pool.uuids != nil {
-		if len(m.pool.uuids) >= 1000 {
-			m.pool.cleanUUIDs()
+	if m.parser.uuids != nil {
+		if len(m.parser.uuids) >= 1000 {
+			m.parser.cleanUUIDs()
 		}
-		m.pool.uuids[key] = uuidHex
+		m.parser.uuids[key] = uuidHex
 	}
 	return uuidHex
 }
@@ -99,13 +99,13 @@ func (m *Message) Data() []byte {
 	return m.buf.Bytes()
 }
 
-// SetFeedback set feedback/data that can be used later, e.g with End or Start hint
-func (m *Message) SetFeedback(feedback interface{}) {
+// SetProtocolState set feedback/data that can be used later, e.g with End or Start hint
+func (m *Message) SetProtocolState(feedback interface{}) {
 	m.feedback = feedback
 }
 
-// Feedback returns feedback associated to this message
-func (m *Message) Feedback() interface{} {
+// ProtocolState returns feedback associated to this message
+func (m *Message) ProtocolState() interface{} {
 	return m.feedback
 }
 
@@ -116,123 +116,123 @@ func (m *Message) Sort() {
 
 // hold message locks before calling this function
 func (m *Message) doDone(key uint64) {
-	m.pool.handler(m)
-	delete(m.pool.m, key)
-	m.pool.msgs--
+	m.parser.emit(m)
+	delete(m.parser.m, key)
+	m.parser.msgs--
 }
 
-// Handler message handler
-type Handler func(*Message)
+// Emitter message handler
+type Emitter func(*Message)
 
 // Debugger is the debugger function. first params is the indicator of the issue's priority
 // the higher the number, the lower the priority. it can be 4 <= level <= 6.
 type Debugger func(int, ...interface{})
 
-// HintEnd hints the pool to stop the session, see MessagePool.End
+// HintEnd hints the parser to stop the session, see MessageParser.End
 // when set, it will be executed before checking FIN or RST flag
 type HintEnd func(*Message) bool
 
-// HintStart hints the pool to start the reassembling the message, see MessagePool.Start
+// HintStart hints the parser to start the reassembling the message, see MessageParser.Start
 // when set, it will be called after checking SYN flag
 type HintStart func(*Packet) (IsIncoming, IsOutgoing bool)
 
-// MessagePool holds data of all tcp messages in progress(still receiving/sending packets).
+// MessageParser holds data of all tcp messages in progress(still receiving/sending packets).
 // message is identified by its source port and dst port, and last 4bytes of src IP.
-type MessagePool struct {
+type MessageParser struct {
 	debug         Debugger
 	maxSize       size.Size // maximum message size, default 5mb
 	m             map[uint64]*Message
 	uuids         map[uint64][]byte
-	handler       Handler
+	emit          Emitter
 	messageExpire time.Duration // the maximum time to wait for the final packet, minimum is 100ms
 	End           HintEnd
 	Start         HintStart
 	ticker        *time.Ticker
 	packets       chan *capture.Packet
 	ticks         time.Duration // the rate of ticks
-	msgs          int32         // messages in the pool
+	msgs          int32         // messages in the parser
 	close         chan struct{} // to signal that we are able to close
 }
 
-// NewMessagePool returns a new instance of message pool
-func NewMessagePool(maxSize size.Size, messageExpire time.Duration, debugger Debugger, handler Handler) (pool *MessagePool) {
-	pool = new(MessagePool)
-	pool.debug = debugger
-	pool.handler = handler
-	pool.messageExpire = time.Millisecond * 100
-	if pool.messageExpire < messageExpire {
-		pool.messageExpire = messageExpire
+// NewMessageParser returns a new instance of message parser
+func NewMessageParser(maxSize size.Size, messageExpire time.Duration, debugger Debugger, emitHandler Emitter) (parser *MessageParser) {
+	parser = new(MessageParser)
+	parser.debug = debugger
+	parser.emit = emitHandler
+	parser.messageExpire = time.Millisecond * 100
+	if parser.messageExpire < messageExpire {
+		parser.messageExpire = messageExpire
 	}
-	pool.maxSize = maxSize
-	if pool.maxSize < 1 {
-		pool.maxSize = 5 << 20
+	parser.maxSize = maxSize
+	if parser.maxSize < 1 {
+		parser.maxSize = 5 << 20
 	}
-	pool.packets = make(chan *capture.Packet, 1e4)
-	pool.m = make(map[uint64]*Message)
-	pool.ticker = time.NewTicker(minTicks << 3)
-	pool.ticks = minTicks << 3
-	pool.close = make(chan struct{}, 1)
-	go pool.wait()
-	return pool
+	parser.packets = make(chan *capture.Packet, 1e4)
+	parser.m = make(map[uint64]*Message)
+	parser.ticker = time.NewTicker(minTicks << 3)
+	parser.ticks = minTicks << 3
+	parser.close = make(chan struct{}, 1)
+	go parser.wait()
+	return parser
 }
 
-// Handler returns packet handler
-func (pool *MessagePool) Handler(packet *capture.Packet) {
-	pool.packets <- packet
+// Packet returns packet handler
+func (parser *MessageParser) PacketHandler(packet *capture.Packet) {
+	parser.packets <- packet
 }
 
-func (pool *MessagePool) wait() {
+func (parser *MessageParser) wait() {
 	var (
 		pckt *capture.Packet
 		now  time.Time
 	)
 	for {
 		select {
-		case pckt = <-pool.packets:
-			pool.parsePacket(pckt)
-		case now = <-pool.ticker.C:
-			pool.timer(now)
-		case <-pool.close:
-			pool.ticker.Stop()
-			// pool.Close should wait for this function to return
-			pool.close <- struct{}{}
+		case pckt = <-parser.packets:
+			parser.parsePacket(pckt)
+		case now = <-parser.ticker.C:
+			parser.timer(now)
+		case <-parser.close:
+			parser.ticker.Stop()
+			// parser.Close should wait for this function to return
+			parser.close <- struct{}{}
 			return
 		}
 	}
 }
 
-func (pool *MessagePool) parsePacket(packet *capture.Packet) {
+func (parser *MessageParser) parsePacket(packet *capture.Packet) {
 	var in, out bool
 	pckt, err := ParsePacket(packet)
 	if err != nil {
-		pool.say(4, fmt.Sprintf("error decoding packet(%dBytes):%s\n", packet.Info.CaptureLength, err))
+		parser.debug(4, fmt.Sprintf("error decoding packet(%dBytes):%s\n", packet.Info.CaptureLength, err))
 		return
 	}
 	lst := len(pckt.SrcIP) - 4
 	key := uint64(pckt.SrcPort)<<48 | uint64(pckt.DstPort)<<32 |
 		uint64(_uint32(pckt.SrcIP[lst:]))
-	m, ok := pool.m[key]
+	m, ok := parser.m[key]
 	if pckt.RST {
 		if ok {
 			m.doDone(key)
 		}
 		key = uint64(pckt.DstPort)<<48 | uint64(pckt.SrcPort)<<32 |
 			uint64(_uint32(pckt.DstIP[lst:]))
-		m, ok = pool.m[key]
+		m, ok = parser.m[key]
 		if ok {
 			m.doDone(key)
 		}
-		pool.say(4, fmt.Sprintf("RST flag from %s to %s", pckt.Src(), pckt.Dst()))
+		parser.debug(4, fmt.Sprintf("RST flag from %s to %s", pckt.Src(), pckt.Dst()))
 		return
 	}
 	switch {
 	case ok:
-		pool.addPacket(key, m, pckt)
+		parser.addPacket(key, m, pckt)
 		return
 	case pckt.SYN:
 		in = !pckt.ACK
-	case pool.Start != nil:
-		if in, out = pool.Start(pckt); !(in || out) {
+	case parser.Start != nil:
+		if in, out = parser.Start(pckt); !(in || out) {
 			return
 		}
 	default:
@@ -240,55 +240,55 @@ func (pool *MessagePool) parsePacket(packet *capture.Packet) {
 	}
 	m = NewMessage(pckt.Src(), pckt.Dst(), pckt.Version)
 	m.IsIncoming = in
-	pool.m[key] = m
+	parser.m[key] = m
 	m.Start = pckt.Timestamp
-	m.pool = pool
-	pool.msgs++
-	if pool.msgs > 2000 {
-		// if pool has a lot of un-dispacthed messages, timer is probably ticking very slow.
+	m.parser = parser
+	parser.msgs++
+	if parser.msgs > 2000 {
+		// if parser has a lot of un-dispacthed messages, timer is probably ticking very slow.
 		// try to decrease tick duration(tick faster)
-		pool.decreaseTicks()
+		parser.decreaseTicks()
 	}
-	pool.addPacket(key, m, pckt)
+	parser.addPacket(key, m, pckt)
 }
 
-// MatchUUID instructs the pool to use same UUID for request and responses
-// this function should be called at initial stage of the pool
-func (pool *MessagePool) MatchUUID(match bool) {
+// MatchUUID instructs the parser to use same UUID for request and responses
+// this function should be called at initial stage of the parser
+func (parser *MessageParser) MatchUUID(match bool) {
 	if match {
-		pool.uuids = make(map[uint64][]byte)
+		parser.uuids = make(map[uint64][]byte)
 		return
 	}
-	pool.uuids = nil
+	parser.uuids = nil
 }
 
 // run GC on UUID map
-func (pool *MessagePool) cleanUUIDs() {
-	var tStamp int64
-	now := time.Now().UnixNano()
-	for k, v := range pool.uuids {
+func (parser *MessageParser) cleanUUIDs() {
+	var now int64
+	before := time.Now().UnixNano()
+	for k, v := range parser.uuids {
 		// there is a timestamp wrapped in every ID
 		// this 1 millisecond, is here to account for a time a message
 		// before it being dispatched
-		tStamp = int64(binary.BigEndian.Uint64(v[4:])) - int64(time.Millisecond)
-		if time.Duration(now-tStamp) > pool.messageExpire {
-			delete(pool.uuids, k)
+		now = int64(binary.BigEndian.Uint64(v[4:])) - int64(time.Millisecond)
+		if time.Duration(before-now) > parser.messageExpire {
+			delete(parser.uuids, k)
 		}
 	}
 }
 
-func (pool *MessagePool) addPacket(key uint64, m *Message, pckt *Packet) {
-	trunc := m.Length + len(pckt.Payload) - int(pool.maxSize)
+func (parser *MessageParser) addPacket(key uint64, m *Message, pckt *Packet) {
+	trunc := m.Length + len(pckt.Payload) - int(parser.maxSize)
 	if trunc > 0 {
 		m.Truncated = true
-		pckt.Payload = pckt.Payload[:int(pool.maxSize)-m.Length]
+		pckt.Payload = pckt.Payload[:int(parser.maxSize)-m.Length]
 	}
 	m.add(pckt)
 	switch {
 	// if one of this cases matches, we dispatch the message
 	case trunc >= 0:
 	case pckt.FIN:
-	case pool.End != nil && pool.End(m):
+	case parser.End != nil && parser.End(m):
 	default:
 		// continue to receive packets
 		return
@@ -296,10 +296,10 @@ func (pool *MessagePool) addPacket(key uint64, m *Message, pckt *Packet) {
 	m.doDone(key)
 }
 
-func (pool *MessagePool) timer(now time.Time) {
+func (parser *MessageParser) timer(now time.Time) {
 	found := false
-	for k, m := range pool.m {
-		if now.Sub(m.End) > pool.messageExpire {
+	for k, m := range parser.m {
+		if now.Sub(m.End) > parser.messageExpire {
 			m.TimedOut = true
 			m.doDone(k)
 			found = true
@@ -308,7 +308,7 @@ func (pool *MessagePool) timer(now time.Time) {
 	// if we did not find any expired message, timer is probably ticking at a very fast rate.
 	// try to increase tick duration(tick slower).
 	if !found {
-		pool.increaseTicks()
+		parser.increaseTicks()
 	}
 }
 
@@ -317,30 +317,30 @@ const (
 	maxTicks = minTicks << 7
 )
 
-func (pool *MessagePool) increaseTicks() {
-	if t := pool.ticks << 1; t <= maxTicks {
-		pool.ticks = t
-		pool.ticker.Reset(t)
+func (parser *MessageParser) increaseTicks() {
+	if t := parser.ticks << 1; t <= maxTicks {
+		parser.ticks = t
+		parser.ticker.Reset(t)
 	}
 }
 
-func (pool *MessagePool) decreaseTicks() {
-	if t := pool.ticks >> 1; t >= minTicks {
-		pool.ticks = t
-		pool.ticker.Reset(t)
+func (parser *MessageParser) decreaseTicks() {
+	if t := parser.ticks >> 1; t >= minTicks {
+		parser.ticks = t
+		parser.ticker.Reset(t)
 	}
 }
 
-// this function should not block other pool operations
-func (pool *MessagePool) say(level int, args ...interface{}) {
-	if pool.debug != nil {
-		pool.debug(level, args...)
+// this function should not block other parser operations
+func (parser *MessageParser) Debug(level int, args ...interface{}) {
+	if parser.debug != nil {
+		parser.debug(level, args...)
 	}
 }
 
-func (pool *MessagePool) Close() error {
-	pool.close <- struct{}{}
-	<-pool.close // wait for timer to be closed!
+func (parser *MessageParser) Close() error {
+	parser.close <- struct{}{}
+	<-parser.close // wait for timer to be closed!
 	return nil
 }
 

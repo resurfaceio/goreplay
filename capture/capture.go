@@ -19,8 +19,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// Handler is a function that is used to handle packets
-type Handler func(*Packet)
+// PacketHandler is a function that is used to handle packets
+type PacketHandler func(*Packet)
 
 // PcapOptions options that can be set on a pcap capture handle,
 // these options take effect on inactive pcap handles
@@ -138,7 +138,7 @@ func (l *Listener) SetPcapOptions(opts PcapOptions) {
 // Listen listens for packets from the handles, and call handler on every packet received
 // until the context done signal is sent or there is unrecoverable error on all handles.
 // this function must be called after activating pcap handles
-func (l *Listener) Listen(ctx context.Context, handler Handler) (err error) {
+func (l *Listener) Listen(ctx context.Context, handler PacketHandler) (err error) {
 	l.read(handler)
 	done := ctx.Done()
 	select {
@@ -152,7 +152,7 @@ func (l *Listener) Listen(ctx context.Context, handler Handler) (err error) {
 }
 
 // ListenBackground is like listen but can run concurrently and signal error through channel
-func (l *Listener) ListenBackground(ctx context.Context, handler Handler) chan error {
+func (l *Listener) ListenBackground(ctx context.Context, handler PacketHandler) chan error {
 	err := make(chan error, 1)
 	go func() {
 		defer close(err)
@@ -294,7 +294,7 @@ func (l *Listener) SocketHandle(ifi net.Interface) (handle Socket, err error) {
 	return
 }
 
-func (l *Listener) read(handler Handler) {
+func (l *Listener) read(handler PacketHandler) {
 	l.Lock()
 	defer l.Unlock()
 	for key, handle := range l.Handles {

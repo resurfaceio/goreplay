@@ -15,7 +15,7 @@ maxSize := 5 << 20
 debugger := func(debugLevel int, data ...interface{}){} // debugger can also be nil
 messageHandler := func(mssg *tcp.Message){}
 
-mssgPool := tcp.NewMessagePool(maxMessageSize, messageExpire, debugger, messageHandler)
+mssgPool := tcp.NewMessageParser(maxMessageSize, messageExpire, debugger, messageHandler)
 listener.Listen(ctx, mssgPool.Handler)
 
 you can use pool.End or/and pool.Start to set custom session behaviors
