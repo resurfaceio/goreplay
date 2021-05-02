@@ -149,7 +149,6 @@ type MessageParser struct {
 	Start         HintStart
 	ticker        *time.Ticker
 	packets       chan *capture.Packet
-	ticks         time.Duration // the rate of ticks
 	msgs          int32         // messages in the parser
 	close         chan struct{} // to signal that we are able to close
 }
@@ -169,8 +168,7 @@ func NewMessageParser(maxSize size.Size, messageExpire time.Duration, debugger D
 	}
 	parser.packets = make(chan *capture.Packet, 1e4)
 	parser.m = make(map[uint64]*Message)
-	parser.ticker = time.NewTicker(minTicks << 3)
-	parser.ticks = minTicks << 3
+	parser.ticker = time.NewTicker(time.Millisecond * 50)
 	parser.close = make(chan struct{}, 1)
 	go parser.wait()
 	return parser
@@ -243,12 +241,6 @@ func (parser *MessageParser) parsePacket(packet *capture.Packet) {
 	parser.m[key] = m
 	m.Start = pckt.Timestamp
 	m.parser = parser
-	parser.msgs++
-	if parser.msgs > 2000 {
-		// if parser has a lot of un-dispacthed messages, timer is probably ticking very slow.
-		// try to decrease tick duration(tick faster)
-		parser.decreaseTicks()
-	}
 	parser.addPacket(key, m, pckt)
 }
 
@@ -297,37 +289,11 @@ func (parser *MessageParser) addPacket(key uint64, m *Message, pckt *Packet) {
 }
 
 func (parser *MessageParser) timer(now time.Time) {
-	found := false
 	for k, m := range parser.m {
 		if now.Sub(m.End) > parser.messageExpire {
 			m.TimedOut = true
 			m.doDone(k)
-			found = true
 		}
-	}
-	// if we did not find any expired message, timer is probably ticking at a very fast rate.
-	// try to increase tick duration(tick slower).
-	if !found {
-		parser.increaseTicks()
-	}
-}
-
-const (
-	minTicks = time.Millisecond * 50
-	maxTicks = minTicks << 7
-)
-
-func (parser *MessageParser) increaseTicks() {
-	if t := parser.ticks << 1; t <= maxTicks {
-		parser.ticks = t
-		parser.ticker.Reset(t)
-	}
-}
-
-func (parser *MessageParser) decreaseTicks() {
-	if t := parser.ticks >> 1; t >= minTicks {
-		parser.ticks = t
-		parser.ticker.Reset(t)
 	}
 }
 
