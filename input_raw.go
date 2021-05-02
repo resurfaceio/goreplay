@@ -206,12 +206,17 @@ func (i *RAWInput) addStats(mStats tcp.Stats) {
 	i.Unlock()
 }
 
-func http1StartHint(pckt *tcp.Packet) (isIncoming, isOutgoing bool) {
-	isIncoming = proto.HasRequestTitle(pckt.Payload)
-	if isIncoming {
-		return
+func http1StartHint(pckt *tcp.Packet) (isRequest, isResponse bool) {
+	if proto.HasRequestTitle(pckt.Payload) {
+		return true, false
 	}
-	return false, proto.HasResponseTitle(pckt.Payload)
+
+	if proto.HasResponseTitle(pckt.Payload) {
+		return false, true
+	}
+
+	// No request or response detected
+	return false, false
 }
 
 func http1EndHint(m *tcp.Message) bool {

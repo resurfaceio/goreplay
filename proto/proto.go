@@ -432,87 +432,87 @@ func CheckChunked(buf []byte) (chunkEnd int, full bool) {
 	return
 }
 
-// Message is an interface used to provide feedback or store dummy data for future use
-type Message interface {
+// Message is an interface used to provide protocol state or store dummy data for future use
+type ProtocolStateSetter interface {
 	SetProtocolState(interface{})
 	ProtocolState() interface{}
 }
 
 type httpProto struct {
-	body        int // body index
-	hdrStart    int
-	hdrParsed   bool // we checked necessary headers
-	hasFullBody bool // all chunks has been parsed
-	isChunked   bool // Transfer-Encoding: chunked
-	bodyLen     int  // Content-Length's value
-	hasTrailer  bool // Trailer header?
+	body         int // body index
+	headerStart  int
+	headerParsed bool // we checked necessary headers
+	hasFullBody  bool // all chunks has been parsed
+	isChunked    bool // Transfer-Encoding: chunked
+	bodyLen      int  // Content-Length's value
+	hasTrailer   bool // Trailer header?
 }
 
 // HasFullPayload checks if this message has full or valid payloads and returns true.
 // Message param is optional but recommended on cases where 'data' is storing
 // partial-to-full stream of bytes(packets).
-func HasFullPayload(data []byte, m Message) bool {
-	var feed *httpProto
+func HasFullPayload(data []byte, m ProtocolStateSetter) bool {
+	var state *httpProto
 	if m != nil {
-		feed, _ = m.ProtocolState().(*httpProto)
+		state, _ = m.ProtocolState().(*httpProto)
 	}
-	if feed == nil {
-		feed = new(httpProto)
+	if state == nil {
+		state = new(httpProto)
 		if m != nil {
-			m.SetProtocolState(feed)
+			m.SetProtocolState(state)
 		}
 	}
-	if feed.hdrStart < 1 {
-		feed.hdrStart = MIMEHeadersStartPos(data)
-		if feed.hdrStart < 0 {
+	if state.headerStart < 1 {
+		state.headerStart = MIMEHeadersStartPos(data)
+		if state.headerStart < 0 {
 			return false
 		}
 	}
-	if feed.body < 1 {
-		feed.body = MIMEHeadersEndPos(data)
-		if feed.body < 0 {
+	if state.body < 1 {
+		state.body = MIMEHeadersEndPos(data)
+		if state.body < 0 {
 			return false
 		}
 	}
-	if !feed.hdrParsed {
+	if !state.headerParsed {
 		chunked := Header(data, []byte("Transfer-Encoding"))
 		if len(chunked) > 0 && bytes.Index(data, []byte("chunked")) > 0 {
-			feed.isChunked = true
+			state.isChunked = true
 			// trailers are generally not allowed in non-chunks body
-			feed.hasTrailer = len(Header(data, []byte("Trailer"))) > 0
+			state.hasTrailer = len(Header(data, []byte("Trailer"))) > 0
 		} else {
 			contentLen := Header(data, []byte("Content-Length"))
-			feed.bodyLen, _ = atoI(contentLen, 10)
+			state.bodyLen, _ = atoI(contentLen, 10)
 		}
-		feed.hdrParsed = true
+		state.headerParsed = true
 	}
 	var body []byte
-	if len(data) > feed.body {
-		body = data[feed.body:]
+	if len(data) > state.body {
+		body = data[state.body:]
 	}
-	if feed.isChunked {
+	if state.isChunked {
 		// check chunks
 		if len(body) < 1 {
 			return false
 		}
-		if !feed.hasFullBody {
+		if !state.hasFullBody {
 			var c int
-			c, feed.hasFullBody = CheckChunked(body)
-			feed.body += c
+			c, state.hasFullBody = CheckChunked(body)
+			state.body += c
 		}
-		if !feed.hasFullBody {
+		if !state.hasFullBody {
 			return false
 		}
 		// check trailer headers
-		if !feed.hasTrailer {
+		if !state.hasTrailer {
 			return true
 		}
 		// trailer headers(whether chunked or plain) should end with empty line
-		return len(data) > feed.body && MIMEHeadersEndPos(data[feed.body:]) != -1
+		return len(data) > state.body && MIMEHeadersEndPos(data[state.body:]) != -1
 	}
 
 	// check for content-length header
-	return feed.bodyLen == len(body)
+	return state.bodyLen == len(body)
 }
 
 // this works with positive integers
