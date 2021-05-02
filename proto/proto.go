@@ -432,7 +432,7 @@ func CheckChunked(buf []byte) (chunkEnd int, full bool) {
 	return
 }
 
-// Message is an interface used to provide protocol state or store dummy data for future use
+// ProtocolStateSetter is an interface used to provide protocol state for future use
 type ProtocolStateSetter interface {
 	SetProtocolState(interface{})
 	ProtocolState() interface{}
