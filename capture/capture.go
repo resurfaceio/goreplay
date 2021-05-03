@@ -172,15 +172,17 @@ func (l *Listener) Filter(ifi net.Interface) (filter string) {
 	if l.port != 0 {
 		port = fmt.Sprintf("port %d", l.port)
 	}
-	dir := " dst " // direction
+	filter = fmt.Sprintf("%s dst %s", l.Transport, port)
 	if l.trackResponse {
-		dir = " "
+		filter += fmt.Sprintf(" or src %s", port)
 	}
-	filter = fmt.Sprintf("(%s%s%s)", l.Transport, dir, port)
+
 	if listenAll(l.host) || isDevice(l.host, ifi) {
-		return
+		return "(" + filter + ")"
 	}
-	filter = fmt.Sprintf("(%s%s%s and host %s)", l.Transport, dir, port, l.host)
+	filter = fmt.Sprintf("(host %s and (%s))", l.host, filter)
+
+	log.Println("BPF filter: " + filter)
 	return
 }
 
