@@ -1,7 +1,6 @@
 package tcp
 
 import (
-	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -30,7 +29,6 @@ type Stats struct {
 type Message struct {
 	packets  []*Packet
 	parser   *MessageParser
-	buf      *bytes.Buffer
 	feedback interface{}
 	Stats
 }
@@ -41,7 +39,6 @@ func NewMessage(srcAddr, dstAddr string, ipVersion uint8) (m *Message) {
 	m.DstAddr = dstAddr
 	m.SrcAddr = srcAddr
 	m.IPversion = ipVersion
-	m.buf = &bytes.Buffer{}
 	return
 }
 
@@ -81,12 +78,36 @@ func (m *Message) UUID() []byte {
 	return uuidHex
 }
 
-func (m *Message) add(pckt *Packet) {
-	m.Length += len(pckt.Payload)
-	m.LostData += int(pckt.Lost)
-	m.packets = append(m.packets, pckt)
-	m.End = pckt.Timestamp
-	m.buf.Write(pckt.Payload)
+func (m *Message) add(packet *Packet) {
+	// fmt.Println("SEQ:", packet.Seq, " - ", len(packet.Payload))
+
+	// Skip duplicates
+	for _, p := range m.packets {
+		if p.Seq == packet.Seq {
+			return
+		}
+	}
+
+	// Packets not always captured in same Seq order, and sometimes we need to prepend
+	if len(m.packets) == 0 || packet.Seq > m.packets[len(m.packets)-1].Seq {
+		m.packets = append(m.packets, packet)
+	} else if packet.Seq < m.packets[0].Seq {
+		m.packets = append([]*Packet{packet}, m.packets...)
+	} else { // insert somewhere in the middle...
+		for i, p := range m.packets {
+			if packet.Seq < p.Seq {
+				m.packets = append(m.packets[:i], append([]*Packet{packet}, m.packets[i:]...)...)
+				break
+			}
+		}
+	}
+
+	m.Length += len(packet.Payload)
+	m.LostData += int(packet.Lost)
+
+	if packet.Timestamp.After(m.End) || m.End.IsZero() {
+		m.End = packet.Timestamp
+	}
 }
 
 // Packets returns packets of the message
@@ -96,7 +117,20 @@ func (m *Message) Packets() []*Packet {
 
 // Data returns data in this message
 func (m *Message) Data() []byte {
-	return m.buf.Bytes()
+	var totalLen int
+	for _, p := range m.packets {
+		totalLen += len(p.Payload)
+	}
+	tmp := make([]byte, totalLen)
+
+	// fmt.Println("Total len:", totalLen, " - ", len(m.packets), " - ", m.Length)
+
+	var i int
+	for _, p := range m.packets {
+		i += copy(tmp[i:], p.Payload)
+	}
+
+	return tmp
 }
 
 // SetProtocolState set feedback/data that can be used later, e.g with End or Start hint
@@ -210,6 +244,8 @@ func (parser *MessageParser) parsePacket(packet *capture.Packet) {
 	key := uint64(pckt.SrcPort)<<48 | uint64(pckt.DstPort)<<32 |
 		uint64(_uint32(pckt.SrcIP[lst:]))
 	m, ok := parser.m[key]
+
+	// If connection is closed, finish both request and response
 	if pckt.RST {
 		if ok {
 			m.doDone(key)
@@ -227,10 +263,14 @@ func (parser *MessageParser) parsePacket(packet *capture.Packet) {
 	case ok:
 		parser.addPacket(key, m, pckt)
 		return
-	case pckt.SYN:
-		in = !pckt.ACK
 	case parser.Start != nil:
 		if in, out = parser.Start(pckt); !(in || out) {
+			// Packet can be received out of order, so give it another chance
+			if packet.Retry < 3 && len(packet.Payload) > 0 {
+				// Requeue not known packets
+				packet.Retry++
+				parser.packets <- packet
+			}
 			return
 		}
 	default:

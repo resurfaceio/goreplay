@@ -19,6 +19,7 @@ package proto
 import (
 	"bufio"
 	"bytes"
+	_ "fmt"
 	"net/http"
 	"net/textproto"
 	"strings"
@@ -471,12 +472,14 @@ func HasFullPayload(data []byte, m ProtocolStateSetter) bool {
 	if state.body < 1 {
 		state.body = MIMEHeadersEndPos(data)
 		if state.body < 0 {
+			// fmt.Println("SKIPPING BODY!")
 			return false
 		}
 	}
 	if !state.headerParsed {
 		chunked := Header(data, []byte("Transfer-Encoding"))
 		if len(chunked) > 0 && bytes.Index(data, []byte("chunked")) > 0 {
+			// fmt.Println("CHUNKED DETECTED!" + string(data))
 			state.isChunked = true
 			// trailers are generally not allowed in non-chunks body
 			state.hasTrailer = len(Header(data, []byte("Trailer"))) > 0
@@ -491,6 +494,7 @@ func HasFullPayload(data []byte, m ProtocolStateSetter) bool {
 		body = data[state.body:]
 	}
 	if state.isChunked {
+		// fmt.Println("CHUNKED!!!", string(body))
 		// check chunks
 		if len(body) < 1 {
 			return false
@@ -507,9 +511,14 @@ func HasFullPayload(data []byte, m ProtocolStateSetter) bool {
 		if !state.hasTrailer {
 			return true
 		}
+
+		// fmt.Printf("CHUNKED: bodyLen: %d, actualLen: %d\n, MIME: %v", state.bodyLen, len(body), MIMEHeadersEndPos(data[state.body:]))
+
 		// trailer headers(whether chunked or plain) should end with empty line
 		return len(data) > state.body && MIMEHeadersEndPos(data[state.body:]) != -1
 	}
+
+	// fmt.Printf("bodyLen: %d, actualLen: %d\n", state.bodyLen, len(body))
 
 	// check for content-length header
 	return state.bodyLen == len(body)

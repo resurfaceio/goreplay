@@ -18,6 +18,7 @@ type Packet struct {
 	LinkType int
 	Info     *gopacket.CaptureInfo
 	Err      error
+	Retry    int
 }
 
 // NewPacket parses packet and stop at the first error encountered
