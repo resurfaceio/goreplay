@@ -300,7 +300,7 @@ func (c *HTTPClient) Send(data []byte) ([]byte, error) {
 	if !c.config.OriginalHost {
 		req.Host = c.config.url.Host
 	}
-	
+
 	// fix #862
 	if c.config.url.Path == "" && c.config.url.RawQuery == "" {
 		req.URL.Scheme = c.config.url.Scheme
@@ -308,7 +308,7 @@ func (c *HTTPClient) Send(data []byte) ([]byte, error) {
 	} else {
 		req.URL = c.config.url
 	}
-	
+
 	// force connection to not be closed, which can affect the global client
 	req.Close = false
 	// it's an error if this is not equal to empty string

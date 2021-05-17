@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"hash/fnv"
@@ -18,6 +19,8 @@ type TCPOutput struct {
 	bufStats    *GorStat
 	config      *TCPOutputConfig
 	workerIndex uint32
+
+	close bool
 }
 
 // TCPOutputConfig tcp output configuration
@@ -54,6 +57,10 @@ func (o *TCPOutput) worker(bufferIndex int) {
 	retries := 0
 	conn, err := o.connect(o.address)
 	for {
+		if o.close {
+			return
+		}
+
 		if err == nil {
 			break
 		}
@@ -118,9 +125,16 @@ func (o *TCPOutput) PluginWrite(msg *Message) (n int, err error) {
 
 func (o *TCPOutput) connect(address string) (conn net.Conn, err error) {
 	if o.config.Secure {
-		conn, err = tls.Dial("tcp", address, &tls.Config{InsecureSkipVerify: o.config.SkipVerify})
+		var d tls.Dialer
+		d.Config = &tls.Config{InsecureSkipVerify: o.config.SkipVerify}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		conn, err = d.DialContext(ctx, "tcp", address)
 	} else {
-		conn, err = net.Dial("tcp", address)
+		var d net.Dialer
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		conn, err = d.DialContext(ctx, "tcp", address)
 	}
 
 	return
@@ -128,4 +142,8 @@ func (o *TCPOutput) connect(address string) (conn net.Conn, err error) {
 
 func (o *TCPOutput) String() string {
 	return fmt.Sprintf("TCP output %s, limit: %d", o.address, o.limit)
+}
+
+func (o *TCPOutput) Close() {
+	o.close = true
 }

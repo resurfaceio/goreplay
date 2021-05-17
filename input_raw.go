@@ -114,7 +114,7 @@ func (i *RAWInput) PluginRead() (*Message, error) {
 		msg.Data = msgTCP.Data()
 	}
 	var msgType byte = ResponsePayload
-	if msgTCP.IsIncoming {
+	if msgTCP.IsRequest {
 		msgType = RequestPayload
 		if i.RealIPHeader != "" {
 			msg.Data = proto.SetHeader(msg.Data, []byte(i.RealIPHeader), []byte(msgTCP.SrcAddr))
@@ -134,6 +134,7 @@ func (i *RAWInput) PluginRead() (*Message, error) {
 		stat := msgTCP.Stats
 		go i.addStats(stat)
 	}
+	msgTCP.Finalize()
 	msgTCP = nil
 	return &msg, nil
 }
@@ -150,7 +151,7 @@ func (i *RAWInput) listen(address string) {
 		log.Fatal(err)
 	}
 	parser := tcp.NewMessageParser(i.CopyBufferSize, i.Expire, Debug, i.messageEmitter)
-	parser.MatchUUID(i.TrackResponse)
+
 	if i.Protocol == ProtocolHTTP {
 		parser.Start = http1StartHint
 		parser.End = http1EndHint
@@ -220,5 +221,9 @@ func http1StartHint(pckt *tcp.Packet) (isRequest, isResponse bool) {
 }
 
 func http1EndHint(m *tcp.Message) bool {
-	return proto.HasFullPayload(m.Data(), m)
+	if m.MissingChunk() {
+		return false
+	}
+
+	return proto.HasFullPayload(m, m.PacketData()...)
 }

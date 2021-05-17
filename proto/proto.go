@@ -19,7 +19,6 @@ package proto
 import (
 	"bufio"
 	"bytes"
-	_ "fmt"
 	"net/http"
 	"net/textproto"
 	"strings"
@@ -59,10 +58,15 @@ func MIMEHeadersStartPos(payload []byte) int {
 // If not found, value will be blank, and headerStart will be -1
 // Do not support multi-line headers.
 func header(payload []byte, name []byte) (value []byte, headerStart, headerEnd, valueStart, valueEnd int) {
-	headerStart = MIMEHeadersStartPos(payload)
-	if headerStart < 0 {
-		return
+	if HasTitle(payload) {
+		headerStart = MIMEHeadersStartPos(payload)
+		if headerStart < 0 {
+			return
+		}
+	} else {
+		headerStart = 0
 	}
+
 	var colonIndex int
 	for headerStart < len(payload) {
 		headerEnd = bytes.IndexByte(payload[headerStart:], '\n')
@@ -402,7 +406,11 @@ func HasTitle(payload []byte) bool {
 // CheckChunked checks HTTP/1 chunked data integrity(https://tools.ietf.org/html/rfc7230#section-4.1)
 // and returns the length of total valid scanned chunks(including chunk size, extensions and CRLFs) and
 // full is true if all chunks was scanned.
-func CheckChunked(buf []byte) (chunkEnd int, full bool) {
+func CheckChunked(bufs ...[]byte) (chunkEnd int, full bool) {
+	var buf []byte
+	if len(bufs) > 0 {
+		buf = bufs[0]
+	}
 	for chunkEnd < len(buf) {
 		sz := bytes.IndexByte(buf[chunkEnd:], '\r')
 		if sz < 1 {
@@ -452,7 +460,7 @@ type httpProto struct {
 // HasFullPayload checks if this message has full or valid payloads and returns true.
 // Message param is optional but recommended on cases where 'data' is storing
 // partial-to-full stream of bytes(packets).
-func HasFullPayload(data []byte, m ProtocolStateSetter) bool {
+func HasFullPayload(m ProtocolStateSetter, payloads ...[]byte) bool {
 	var state *httpProto
 	if m != nil {
 		state, _ = m.ProtocolState().(*httpProto)
@@ -464,64 +472,84 @@ func HasFullPayload(data []byte, m ProtocolStateSetter) bool {
 		}
 	}
 	if state.headerStart < 1 {
-		state.headerStart = MIMEHeadersStartPos(data)
-		if state.headerStart < 0 {
-			return false
+		for _, data := range payloads {
+			state.headerStart = MIMEHeadersStartPos(data)
+			if state.headerStart < 0 {
+				return false
+			} else {
+				break
+			}
 		}
 	}
+
 	if state.body < 1 {
-		state.body = MIMEHeadersEndPos(data)
-		if state.body < 0 {
-			// fmt.Println("SKIPPING BODY!")
-			return false
+		var pos int
+		for _, data := range payloads {
+			endPos := MIMEHeadersEndPos(data)
+			if endPos < 0 {
+				pos += len(data)
+			} else {
+				pos += endPos
+			}
+
+			if endPos > 0 {
+				state.body = pos
+				break
+			}
 		}
 	}
 	if !state.headerParsed {
-		chunked := Header(data, []byte("Transfer-Encoding"))
-		if len(chunked) > 0 && bytes.Index(data, []byte("chunked")) > 0 {
-			// fmt.Println("CHUNKED DETECTED!" + string(data))
-			state.isChunked = true
-			// trailers are generally not allowed in non-chunks body
-			state.hasTrailer = len(Header(data, []byte("Trailer"))) > 0
-		} else {
-			contentLen := Header(data, []byte("Content-Length"))
-			state.bodyLen, _ = atoI(contentLen, 10)
+		var pos int
+		for _, data := range payloads {
+			chunked := Header(data, []byte("Transfer-Encoding"))
+
+			if len(chunked) > 0 && bytes.Index(data, []byte("chunked")) > 0 {
+				state.isChunked = true
+				// trailers are generally not allowed in non-chunks body
+				state.hasTrailer = len(Header(data, []byte("Trailer"))) > 0
+			} else {
+				contentLen := Header(data, []byte("Content-Length"))
+				state.bodyLen, _ = atoI(contentLen, 10)
+			}
+
+			pos += len(data)
+
+			if state.bodyLen > 0 || pos >= state.body {
+				state.headerParsed = true
+				break
+			}
 		}
-		state.headerParsed = true
 	}
-	var body []byte
-	if len(data) > state.body {
-		body = data[state.body:]
+
+	bodyLen := 0
+	for _, data := range payloads {
+		bodyLen += len(data)
 	}
+	bodyLen -= state.body
+
 	if state.isChunked {
-		// fmt.Println("CHUNKED!!!", string(body))
 		// check chunks
-		if len(body) < 1 {
+		if bodyLen < 1 {
 			return false
 		}
-		if !state.hasFullBody {
-			var c int
-			c, state.hasFullBody = CheckChunked(body)
-			state.body += c
-		}
-		if !state.hasFullBody {
-			return false
-		}
+
 		// check trailer headers
-		if !state.hasTrailer {
-			return true
+		if state.hasTrailer {
+			if bytes.HasSuffix(payloads[len(payloads)-1], []byte("\r\n\r\n")) {
+				return true
+			}
+		} else {
+			if bytes.HasSuffix(payloads[len(payloads)-1], []byte("0\r\n\r\n")) {
+				state.hasFullBody = true
+				return true
+			}
 		}
 
-		// fmt.Printf("CHUNKED: bodyLen: %d, actualLen: %d\n, MIME: %v", state.bodyLen, len(body), MIMEHeadersEndPos(data[state.body:]))
-
-		// trailer headers(whether chunked or plain) should end with empty line
-		return len(data) > state.body && MIMEHeadersEndPos(data[state.body:]) != -1
+		return false
 	}
-
-	// fmt.Printf("bodyLen: %d, actualLen: %d\n", state.bodyLen, len(body))
 
 	// check for content-length header
-	return state.bodyLen == len(body)
+	return state.bodyLen == bodyLen
 }
 
 // this works with positive integers

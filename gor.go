@@ -94,7 +94,6 @@ func main() {
 	}
 	emitter.Close()
 	os.Exit(exit)
-
 }
 
 func profileCPU(cpuprofile string) {

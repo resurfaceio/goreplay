@@ -427,24 +427,22 @@ func TestCheckChunks(t *testing.T) {
 }
 
 func TestHasFullPayload(t *testing.T) {
-	var m = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nTransfer-Encoding: chunked\r\n\r\n7\r\nMozilla\r\n9\r\nDeveloper\r\n7\r\nNetwork\r\n0\r\n\r\n"
-	got := HasFullPayload([]byte(m), nil)
-	expected := true
-	if got != expected {
-		t.Errorf("expected %v to equal %v", got, expected)
-	}
+	var m string
+	var got, expected bool
 
-	// check with invalid chunk format
-	m = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nTransfer-Encoding: chunked\r\n\r\n7\r\nMozia\r\n9\r\nDeveloper\r\n7\r\nNetwork\r\n0\r\n\r\n"
-	got = HasFullPayload([]byte(m), nil)
-	expected = false
+	got = HasFullPayload(nil,
+		[]byte("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n"),
+		[]byte("Transfer-Encoding: chunked\r\n\r\n"),
+		[]byte("7\r\nMozilla\r\n9\r\nDeveloper\r\n"),
+		[]byte("7\r\nNetwork\r\n0\r\n\r\n"))
+	expected = true
 	if got != expected {
 		t.Errorf("expected %v to equal %v", got, expected)
 	}
 
 	// check chunks with trailers
 	m = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nTransfer-Encoding: chunked\r\nTrailer: Expires\r\n\r\n7\r\nMozilla\r\n9\r\nDeveloper\r\n7\r\nNetwork\r\n0\r\n\r\nExpires: Wed, 21 Oct 2015 07:28:00 GMT\r\n\r\n"
-	got = HasFullPayload([]byte(m), nil)
+	got = HasFullPayload(nil, []byte(m))
 	expected = true
 	if got != expected {
 		t.Errorf("expected %v to equal %v", got, expected)
@@ -452,7 +450,7 @@ func TestHasFullPayload(t *testing.T) {
 
 	// check with missing trailers
 	m = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nTransfer-Encoding: chunked\r\nTrailer: Expires\r\n\r\n7\r\nMozilla\r\n9\r\nDeveloper\r\n7\r\nNetwork\r\n0\r\n\r\nExpires: Wed, 21 Oct 2015 07:28:00"
-	got = HasFullPayload([]byte(m), nil)
+	got = HasFullPayload(nil, []byte(m))
 	expected = false
 	if got != expected {
 		t.Errorf("expected %v to equal %v", got, expected)
@@ -460,7 +458,7 @@ func TestHasFullPayload(t *testing.T) {
 
 	// check with content-length
 	m = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 23\r\n\r\nMozillaDeveloperNetwork"
-	got = HasFullPayload([]byte(m), nil)
+	got = HasFullPayload(nil, []byte(m))
 	expected = true
 	if got != expected {
 		t.Errorf("expected %v to equal %v", got, expected)
@@ -468,7 +466,7 @@ func TestHasFullPayload(t *testing.T) {
 
 	// check missing total length
 	m = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 23\r\n\r\nMozillaDeveloperNet"
-	got = HasFullPayload([]byte(m), nil)
+	got = HasFullPayload(nil, []byte(m))
 	expected = false
 	if got != expected {
 		t.Errorf("expected %v to equal %v", got, expected)
@@ -476,7 +474,7 @@ func TestHasFullPayload(t *testing.T) {
 
 	// check with no body
 	m = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n"
-	got = HasFullPayload([]byte(m), nil)
+	got = HasFullPayload(nil, []byte(m))
 	expected = true
 	if got != expected {
 		t.Errorf("expected %v to equal %v", got, expected)
@@ -486,7 +484,7 @@ func TestHasFullPayload(t *testing.T) {
 func BenchmarkHasFullPayload(b *testing.B) {
 	data := []byte("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nTransfer-Encoding: chunked\r\n\r\n1e\r\n111111111111111111111111111111\r\n0\r\n\r\n")
 	for i := 0; i < b.N; i++ {
-		if !HasFullPayload(data, nil) {
+		if !HasFullPayload(nil, data) {
 			b.Fail()
 		}
 	}
