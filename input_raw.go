@@ -141,7 +141,7 @@ func (i *RAWInput) PluginRead() (*Message, error) {
 
 func (i *RAWInput) listen(address string) {
 	var err error
-	i.listener, err = capture.NewListener(i.host, i.port, "", i.Engine, i.TrackResponse)
+	i.listener, err = capture.NewListener(i.host, i.port, "", i.Engine, i.TrackResponse, Settings.maxAllowedMem)
 	if err != nil {
 		log.Fatal(err)
 	}

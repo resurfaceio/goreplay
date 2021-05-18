@@ -18,6 +18,7 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	"github.com/pbnjay/memory"
 	"golang.org/x/sys/unix"
 )
 
@@ -50,7 +51,8 @@ type Listener struct {
 	port          uint16 // src or/and dst port
 	trackResponse bool
 
-	host string // pcap file name or interface (name, hardware addr, index or ip address)
+	host          string // pcap file name or interface (name, hardware addr, index or ip address)
+	maxAllowedMem int
 
 	closeDone chan struct{}
 	quit      chan struct{}
@@ -98,7 +100,7 @@ func (eng *EngineType) String() (e string) {
 // NewListener creates and initialize a new Listener. if transport or/and engine are invalid/unsupported
 // is "tcp" and "pcap", are assumed. l.Engine and l.Transport can help to get the values used.
 // if there is an error it will be associated with getting network interfaces
-func NewListener(host string, port uint16, transport string, engine EngineType, trackResponse bool) (l *Listener, err error) {
+func NewListener(host string, port uint16, transport string, engine EngineType, trackResponse bool, maxAllowedMem int) (l *Listener, err error) {
 	l = &Listener{}
 
 	l.host = host
@@ -112,6 +114,7 @@ func NewListener(host string, port uint16, transport string, engine EngineType, 
 	l.closeDone = make(chan struct{})
 	l.quit = make(chan struct{})
 	l.Reading = make(chan bool)
+	l.maxAllowedMem = maxAllowedMem
 	switch engine {
 	default:
 		l.Engine = EnginePcap
@@ -326,12 +329,13 @@ func (l *Listener) read(handler PacketHandler) {
 				case <-l.quit:
 					return
 				case <-ticker.C:
-					usedMemory, totalMemory := memUsage()
-					if 100*float64(usedMemory)/float64(totalMemory) >= 95 {
-						fmt.Println("Using more memory then allowed. Enabling throttling.")
-						time.Sleep(time.Second)
+					if l.maxAllowedMem > 0 {
+						usedMemory, _ := memUsage()
+						if int(usedMemory) > l.maxAllowedMem {
+							log.Printf("[WARNING] Using more memory (%vmb) than allowed (%vmb). Enabling throttling for 1 second\n", bToMb(usedMemory), bToMb(uint64(l.maxAllowedMem)))
+							time.Sleep(time.Second)
+						}
 					}
-					continue
 				default:
 					data, ci, err := hndl.ZeroCopyReadPacketData()
 					if err == nil {
@@ -519,4 +523,24 @@ func pcapLinkTypeLength(lType int) (int, bool) {
 	default:
 		return 0, false
 	}
+}
+
+func memUsage() (uint64, uint64) {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	// fmt.Printf("Current memory usage: ")
+	// // For info on each, see: https://golang.org/pkg/runtime/#MemStats
+	// fmt.Printf("Alloc = %v MiB", bToMb(m.Alloc))
+	// fmt.Printf("\tTotalAlloc = %v MiB", bToMb(m.TotalAlloc))
+	// fmt.Printf("\tSys = %v MiB", bToMb(m.Sys))
+	// fmt.Printf("\tNumGC = %v\n", m.NumGC)
+
+	// fmt.Printf("Total available memory %v MiB\n", bToMb(memory.TotalMemory()))
+	// fmt.Printf("Currently using %.2f %% of memory\n", 100*float64(m.Alloc+m.Sys)/float64(memory.TotalMemory()))
+
+	return m.Alloc + m.Sys, memory.TotalMemory()
+}
+
+func bToMb(b uint64) uint64 {
+	return b / 1024 / 1024
 }

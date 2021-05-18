@@ -4,8 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/buger/goreplay/size"
 )
 
 // DEMO indicates that goreplay is running in demo mode
@@ -58,6 +62,9 @@ type AppSettings struct {
 	InputHTTP    MultiOption
 	OutputHTTP   MultiOption `json:"output-http"`
 	PrettifyHTTP bool        `json:"prettify-http"`
+
+	MaxAllowedMem string `json:"max-allowed-mem"`
+	maxAllowedMem int    `json:"-"`
 
 	OutputHTTPConfig HTTPOutputConfig
 
@@ -142,6 +149,8 @@ func init() {
 	flag.BoolVar(&Settings.Monitor, "input-raw-monitor", false, "enable RF monitor mode")
 	flag.BoolVar(&Settings.Stats, "input-raw-stats", false, "enable stats generator on raw TCP messages")
 
+	flag.StringVar(&Settings.MaxAllowedMem, "max-allowed-mem", "", "Allow specify memory which can be consumed by the process. Example: --max-allowed-mem 10%, --max-allowed-mem 200m")
+
 	flag.StringVar(&Settings.Middleware, "middleware", "", "Used for modifying traffic using external command")
 
 	flag.Var(&Settings.OutputHTTP, "output-http", "Forwards incoming requests to given http address.\n\t# Redirect all incoming requests to staging.com address \n\tgor --input-raw :80 --output-http http://staging.com")
@@ -216,6 +225,21 @@ func checkSettings() {
 	}
 	if Settings.CopyBufferSize < 1 {
 		Settings.CopyBufferSize.Set("5mb")
+	}
+
+	if Settings.MaxAllowedMem != "" {
+		_, totalMemory := memUsage()
+		fmt.Println("Total available memory:", bToMb(totalMemory), "Mb")
+		if strings.HasSuffix(Settings.MaxAllowedMem, "%") {
+			pct, _ := strconv.Atoi(strings.TrimSuffix(Settings.MaxAllowedMem, "%"))
+			Settings.maxAllowedMem = int((float64(pct) / 100) * float64(totalMemory))
+		} else {
+			var s size.Size
+			s.Set(Settings.MaxAllowedMem)
+			Settings.maxAllowedMem = int(s)
+		}
+
+		fmt.Println("Limiting memory usage to:", bToMb(uint64(Settings.maxAllowedMem)), "Mb")
 	}
 }
 

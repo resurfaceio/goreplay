@@ -5,10 +5,13 @@ import (
 	"hash/fnv"
 	"io"
 	"log"
+	"runtime"
 	"sync"
 	"time"
 
 	"github.com/buger/goreplay/byteutils"
+
+	"github.com/pbnjay/memory"
 )
 
 // Emitter represents an abject to manage plugins communication
@@ -60,6 +63,7 @@ func (e *Emitter) Start(plugins *InOutPlugins, middlewareCmd string) {
 
 // Close closes all the goroutine and waits for it to finish.
 func (e *Emitter) Close() {
+	fmt.Println("Closing!")
 	for _, p := range e.plugins.All {
 		if cp, ok := p.(io.Closer); ok {
 			cp.Close()
@@ -69,6 +73,8 @@ func (e *Emitter) Close() {
 		// wait for everything to stop
 		e.Wait()
 	}
+
+	fmt.Println("Closed!")
 	e.plugins.All = nil // avoid Close to make changes again
 }
 
@@ -88,6 +94,7 @@ func CopyMulty(src PluginReader, writers ...PluginWriter) error {
 			}
 			return err
 		}
+
 		if msg != nil && len(msg.Data) > 0 {
 			if len(msg.Data) > int(Settings.CopyBufferSize) {
 				msg.Data = msg.Data[:Settings.CopyBufferSize]
@@ -174,4 +181,24 @@ func CopyMulty(src PluginReader, writers ...PluginWriter) error {
 			}
 		}
 	}
+}
+
+func memUsage() (uint64, uint64) {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	// fmt.Printf("Current memory usage: ")
+	// // For info on each, see: https://golang.org/pkg/runtime/#MemStats
+	// fmt.Printf("Alloc = %v MiB", bToMb(m.Alloc))
+	// fmt.Printf("\tTotalAlloc = %v MiB", bToMb(m.TotalAlloc))
+	// fmt.Printf("\tSys = %v MiB", bToMb(m.Sys))
+	// fmt.Printf("\tNumGC = %v\n", m.NumGC)
+
+	// fmt.Printf("Total available memory %v MiB\n", bToMb(memory.TotalMemory()))
+	// fmt.Printf("Currently using %.2f %% of memory\n", 100*float64(m.Alloc+m.Sys)/float64(memory.TotalMemory()))
+
+	return m.Alloc + m.Sys, memory.TotalMemory()
+}
+
+func bToMb(b uint64) uint64 {
+	return b / 1024 / 1024
 }
