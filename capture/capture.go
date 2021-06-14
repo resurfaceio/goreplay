@@ -65,6 +65,7 @@ const (
 	EnginePcap EngineType = 1 << iota
 	EnginePcapFile
 	EngineRawSocket
+	EngineAFPacket
 )
 
 // Set is here so that EngineType can implement flag.Var
@@ -74,8 +75,10 @@ func (eng *EngineType) Set(v string) error {
 		*eng = EnginePcap
 	case "pcap_file":
 		*eng = EnginePcapFile
-	case "raw_socket", "af_packet":
+	case "raw_socket":
 		*eng = EngineRawSocket
+	case "af_packet":
+		*eng = EngineAFPacket
 	default:
 		return fmt.Errorf("invalid engine %s", v)
 	}
@@ -90,6 +93,8 @@ func (eng *EngineType) String() (e string) {
 		e = "libpcap"
 	case EngineRawSocket:
 		e = "raw_socket"
+	case EngineAFPacket:
+		e = "af_packet"
 	default:
 		e = ""
 	}
@@ -124,6 +129,9 @@ func NewListener(host string, ports []uint16, transport string, engine EngineTyp
 	case EngineRawSocket:
 		l.Engine = EngineRawSocket
 		l.Activate = l.activateRawSocket
+	case EngineAFPacket:
+		l.Engine = EngineAFPacket
+		l.Activate = l.activateAFPacket
 	case EnginePcapFile:
 		l.Engine = EnginePcapFile
 		l.Activate = l.activatePcapFile
@@ -393,6 +401,36 @@ func (l *Listener) activatePcap() error {
 		handle, e = l.PcapHandle(ifi)
 		if e != nil {
 			msg += ("\n" + e.Error())
+			continue
+		}
+		l.Handles[ifi.Name] = handle
+	}
+	if len(l.Handles) == 0 {
+		return fmt.Errorf("pcap handles error:%s", msg)
+	}
+	return nil
+}
+
+func (l *Listener) activateAFPacket() error {
+	var e error
+	var msg string
+
+	szFrame, szBlock, numBlocks, err := afpacketComputeSize(*bufferSize, *snaplen, os.Getpagesize())
+	if l.host == "" || l.host == "any" {
+		handle, err := newAfpacketHandle("any", szFrame, szBlock, numBlocks, false, pcap.BlockForever)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+
+	for _, ifi := range l.Interfaces {
+		var handle *pcap.Handle
+
+		handle, err := newAfpacketHandle(ifi.Name, szFrame, szBlock, numBlocks, false, pcap.BlockForever)
+
+		if err != nil {
+			msg += ("\n" + err.Error())
 			continue
 		}
 		l.Handles[ifi.Name] = handle
