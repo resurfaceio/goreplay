@@ -100,6 +100,9 @@ type AppSettings struct {
 	OutputHTTP   []string `json:"output-http"`
 	PrettifyHTTP bool     `json:"prettify-http"`
 
+	OutputResurface      MultiOption `json:"output-resurface"`
+	OutputResurfaceRules string      `json:"output-resurface-rules"`
+
 	OutputHTTPConfig HTTPOutputConfig
 
 	OutputBinary       []string `json:"output-binary"`
@@ -196,6 +199,10 @@ func init() {
 	flag.StringVar(&Settings.Middleware, "middleware", "", "Used for modifying traffic using external command")
 
 	flag.Var(&MultiOption{&Settings.OutputHTTP}, "output-http", "Forwards incoming requests to given http address.\n\t# Redirect all incoming requests to staging.com address \n\tgor --input-raw :80 --output-http http://staging.com")
+
+	flag.Var(&Settings.OutputResurface, "output-resurface", "Forwards incoming requests and response data to resurface instance. Example: gor --input-raw :80 --output-resurface http://localhost:4001/message")
+
+	flag.StringVar(&Settings.OutputResurfaceRules, "output-resurface-rules", "", "Resurface filtering rules. Example: gor --input-raw :80 --output-resurface http://localhost:4001/message --output-resurface-rules \"include_debug\n\"")
 
 	/* outputHTTPConfig */
 	flag.Var(&Settings.OutputHTTPConfig.BufferSize, "output-http-response-buffer", "HTTP response buffer size, all data after this size will be discarded.")
