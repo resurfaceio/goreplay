@@ -169,7 +169,16 @@ func (pckt *Packet) parse(data []byte, lType, lTypeLen int, cp *gopacket.Capture
 		return ErrHdrLength("TCP opts")
 	}
 
-	if !allowEmpty && len(ndata[dOf:]) == 0 {
+	// There are case when packet have padding but dOf shows its not
+	empty := true
+	for i := 0; i < len(ndata[dOf:]); i++ {
+		if ndata[dOf:][i] != 0 {
+			empty = false
+			break
+		}
+	}
+
+	if !allowEmpty && empty {
 		return EmptyPacket("")
 	}
 
