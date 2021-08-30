@@ -353,34 +353,36 @@ func (parser *MessageParser) addPacket(m *Message, pckt *Packet) bool {
 	if parser.End != nil {
 		if parser.End(m) {
 			parser.Emit(m)
-		} else {
-			// Expect: 100-continue handling
-			if state, ok := m.feedback.(*proto.HTTPState); ok {
-				if state.Continue100 {
-					delete(parser.m, m.packets[0].MessageID())
-
-					// Shift Ack by given offset
-					// Size of "HTTP/1.1 100 Continue\r\n\r\n" message
-					for _, p := range m.packets {
-						p.messageID = 0
-						p.Ack += 25
-					}
-
-					// If next section was aready approved and received, merge messages
-					if next, found := parser.m[m.packets[0].MessageID()]; found {
-						for _, p := range next.packets {
-							parser.addPacket(m, p)
-						}
-					}
-
-					// Re-add (or override) again with new message and ID
-					parser.m[m.packets[0].MessageID()] = m
-				}
-			}
+			return true
 		}
+
+		parser.Fix100Continue(m)
 	}
 
 	return true
+}
+
+func (parser *MessageParser) Fix100Continue(m *Message) {
+	if state, ok := m.feedback.(*proto.HTTPState); ok && state.Continue100 {
+		delete(parser.m, m.packets[0].MessageID())
+
+		// Shift Ack by given offset
+		// Size of "HTTP/1.1 100 Continue\r\n\r\n" message
+		for _, p := range m.packets {
+			p.messageID = 0
+			p.Ack += 25
+		}
+
+		// If next section was aready approved and received, merge messages
+		if next, found := parser.m[m.packets[0].MessageID()]; found {
+			for _, p := range next.packets {
+				parser.addPacket(m, p)
+			}
+		}
+
+		// Re-add (or override) again with new message and ID
+		parser.m[m.packets[0].MessageID()] = m
+	}
 }
 
 func (parser *MessageParser) Read() *Message {
