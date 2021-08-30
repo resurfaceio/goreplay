@@ -397,10 +397,12 @@ func (l *Listener) read() {
 					return
 				case <-timer.C:
 					if h, ok := hndl.handler.(PcapStatProvider); ok {
-						s, _ := h.Stats()
-						stats.Add("packets_received", int64(s.PacketsReceived))
-						stats.Add("packets_dropped", int64(s.PacketsDropped))
-						stats.Add("packets_if_dropped", int64(s.PacketsIfDropped))
+						s, err := h.Stats()
+						if err == nil {
+							stats.Add("packets_received", int64(s.PacketsReceived))
+							stats.Add("packets_dropped", int64(s.PacketsDropped))
+							stats.Add("packets_if_dropped", int64(s.PacketsIfDropped))
+						}
 					}
 				default:
 					data, ci, err := hndl.handler.ReadPacketData()
@@ -520,6 +522,9 @@ func (l *Listener) activatePcapFile() (err error) {
 		handle.Close()
 		return fmt.Errorf("BPF filter error: %q, filter: %s", e, l.BPFFilter)
 	}
+
+	fmt.Println("BPF Filter:", l.BPFFilter)
+
 	l.Handles["pcap_file"] = packetHandle{
 		handler: handle,
 	}
