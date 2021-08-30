@@ -168,6 +168,13 @@ func (m *Message) Data() []byte {
 		tmp, _ = copySlice(tmp, len(packetData[0]), packetData[1:]...)
 	}
 
+	// Remove Expect header, since its replay not fully supported
+	if state, ok := m.feedback.(*proto.HTTPState); ok {
+		if state.Continue100 {
+			tmp = proto.DeleteHeader(tmp, []byte("Expect"))
+		}
+	}
+
 	return tmp
 }
 
@@ -406,7 +413,6 @@ func (parser *MessageParser) timer(now time.Time) {
 			m.TimedOut = true
 			stats.Add("message_timeout_count", 1)
 			failMsg++
-
 			if parser.End == nil || parser.allowIncompete {
 				parser.Emit(m)
 			}
