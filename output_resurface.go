@@ -4,17 +4,19 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"os"
 	"time"
+
 	// "io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"strconv"
-	// "strings"
 
+	// "strings"
 	"github.com/buger/goreplay/byteutils"
 
-	resurface_logger "github.com/resurfaceio/logger-go"
+	resurface_logger "github.com/resurfaceio/logger-go/v3"
 )
 
 type ResurfaceConfig struct {
@@ -22,15 +24,16 @@ type ResurfaceConfig struct {
 }
 
 type ResurfaceOutput struct {
-	config  *ResurfaceConfig
-	client  *http.Client
-	rlogger *resurface_logger.HttpLogger
+	config   *ResurfaceConfig
+	client   *http.Client
+	rlogger  *resurface_logger.HttpLogger
+	debugOut bool
 
 	responses map[string]*Message
 	requests  map[string]*Message
 }
 
-func NewResurfaceOutput(address string, rules string) PluginWriter {
+func NewResurfaceOutput(address string, rules string, debugOut bool) PluginWriter {
 	o := new(ResurfaceOutput)
 	var err error
 
@@ -48,14 +51,60 @@ func NewResurfaceOutput(address string, rules string) PluginWriter {
 		Rules: rules,
 	})
 	if err != nil {
-		log.Fatal(fmt.Sprintf("[OUTPUT-RESURFACE] Resurface options error", err))
+		log.Fatal(fmt.Sprintf("[OUTPUT-RESURFACE] Resurface options error[%q]", err))
 	}
 
+	o.debugOut = debugOut
+	if o.debugOut {
+		os.Stdout.WriteString("[Resurface] Resurface logger enabled: " + strconv.FormatBool(o.rlogger.Enabled()) + "\n")
+	}
 	o.client = &http.Client{}
 	o.responses = make(map[string]*Message)
 	o.requests = make(map[string]*Message)
 
+	go o.StrayRequestsCollector()
+
 	return o
+}
+
+func (o *ResurfaceOutput) StrayRequestsCollector() {
+	for {
+		if n := len(o.requests); (n > 0) && (n != len(o.responses)) {
+			os.Stdout.WriteString(payloadSeparator + "\n[Resurface] NUMBER OF REQ IN QUEUE: " + strconv.Itoa(n) + "\n")
+			for id, req := range o.requests {
+				ts, _ := strconv.ParseInt(byteutils.SliceToString(payloadMeta(req.Meta)[2]), 10, 64)
+				if _, hasResponse := o.responses[id]; time.Now().UnixNano() >= ts+int64(time.Minute) && !hasResponse {
+					if o.debugOut {
+						os.Stdout.WriteString("[Resurface] STRAY REQUEST: " + id + "\n")
+						// os.Stdout.Write(o.requests[id].Meta)  // add mutex?
+						// os.Stdout.Write(o.requests[id].Data)  // add option to increase verbosity
+						// os.Stdout.WriteString(payloadSeparator)
+					}
+					delete(o.requests, id)
+				}
+			}
+		}
+		// if len(o.requests) > 0 {
+		// 	os.Stdout.WriteString("[Resurface] NUMBER OF REQ IN QUEUE:" + strconv.Itoa(len(o.requests)) + "\n")
+		// 	for id, _ := range o.requests {
+		// 		os.Stdout.WriteString("[Resurface] REQUEST IN QUEUE" + "\n")
+		// 		os.Stdout.WriteString("[Resurface] ")
+		// 		os.Stdout.Write(o.requests[id].Meta)
+		// 		os.Stdout.Write(o.requests[id].Data)
+		// 	}
+		// }
+		// if len(o.responses) > 0 {
+		// 	os.Stdout.WriteString("[Resurface] NUMBER OF RESP IN QUEUE:" + strconv.Itoa(len(o.responses)) + "\n")
+		// 	os.Stdout.Write(payloadSeparatorAsBytes)
+		// 	for id, _ := range o.responses {
+		// 		os.Stdout.WriteString("[Resurface] RESPONSE IN QUEUE" + "\n")
+		// 		os.Stdout.WriteString("[Resurface] ")
+		// 		os.Stdout.Write(o.requests[id].Meta)
+		// 		os.Stdout.Write(o.requests[id].Data)
+		// 	}
+		// }
+		time.Sleep(time.Minute / 6)
+	}
 }
 
 func (o *ResurfaceOutput) PluginWrite(msg *Message) (n int, err error) {
@@ -100,13 +149,26 @@ func (o *ResurfaceOutput) sendRequest(id string) error {
 	}
 
 	reqMeta := payloadMeta(o.requests[id].Meta)
-	// respMeta := payloadMeta(o.responses[id].Meta)
+	respMeta := payloadMeta(o.responses[id].Meta)
 
 	reqTimestamp, _ := strconv.ParseInt(byteutils.SliceToString(reqMeta[2]), 10, 64)
-	// respTimestamp, _ := strconv.ParseInt(byteutils.SliceToString(respMeta[2]), 10, 64)
+	respTimestamp, _ := strconv.ParseInt(byteutils.SliceToString(respMeta[2]), 10, 64)
 
-	resurface_logger.SendHttpMessage(o.rlogger, resp, req, time.Unix(0, reqTimestamp))
+	if o.debugOut {
+		os.Stdout.Write(payloadSeparatorAsBytes)
+		os.Stdout.WriteString("\n[Resurface] PROCESSING REQUEST:  ")
+		os.Stdout.Write(o.requests[id].Meta)
+		os.Stdout.WriteString("[Resurface] PROCESSING RESPONSE: ")
+		os.Stdout.Write(o.responses[id].Meta)
+		os.Stdout.Write(payloadSeparatorAsBytes)
+	}
 
+	resurface_logger.SendHttpMessage(o.rlogger, resp, req, respTimestamp/1000000, (respTimestamp-reqTimestamp)/1000000, nil)
+
+	delete(o.requests, id)
+	delete(o.responses, id)
+
+	// Test message
 	// tags := []string{
 	// 	fmt.Sprintf(`["now", "%d"]`, reqTimestamp/1000000),
 	// 	fmt.Sprintf(`["request_method", "%v"]`, req.Method),
@@ -117,9 +179,6 @@ func (o *ResurfaceOutput) sendRequest(id string) error {
 	// }
 
 	// payload := "[" + strings.Join(tags, ",") + "]"
-
-	// delete(o.requests, id)
-	// delete(o.responses, id)
 
 	// resResp, err := o.client.Post(o.config.url.String(), "application/json", bufio.NewReader(strings.NewReader(payload)))
 	// if err != nil {
