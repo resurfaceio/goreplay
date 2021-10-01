@@ -5,11 +5,13 @@ import (
 	"bytes"
 	"fmt"
 	"time"
+
 	// "io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"strconv"
+
 	// "strings"
 
 	"github.com/buger/goreplay/byteutils"
@@ -48,7 +50,7 @@ func NewResurfaceOutput(address string, rules string) PluginWriter {
 		Rules: rules,
 	})
 	if err != nil {
-		log.Fatal(fmt.Sprintf("[OUTPUT-RESURFACE] Resurface options error", err))
+		log.Fatal(fmt.Sprintf("[OUTPUT-RESURFACE] Resurface options error[%q]", err))
 	}
 
 	o.client = &http.Client{}
