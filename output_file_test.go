@@ -315,7 +315,6 @@ func TestFileOutputAppendSizeLimitOverflow(t *testing.T) {
 	name2 := output.file.Name()
 
 	output.flush()
-	output.updateName()
 
 	output.PluginWrite(&Message{Meta: []byte("1 1 1\r\n"), Data: []byte("test")})
 	name3 := output.file.Name()

@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 	"unsafe"
+
+	"github.com/buger/goreplay/proto"
 )
 
 // TCPProtocol is a number to indicate type of protocol
@@ -168,6 +170,13 @@ func (m *Message) Data() []byte {
 		tmp, _ = copySlice(tmp, len(packetData[0]), packetData[1:]...)
 	}
 
+	// Remove Expect header, since its replay not fully supported
+	if state, ok := m.feedback.(*proto.HTTPState); ok {
+		if state.Continue100 {
+			tmp = proto.DeleteHeader(tmp, []byte("Expect"))
+		}
+	}
+
 	return tmp
 }
 
@@ -281,7 +290,9 @@ func (parser *MessageParser) wait(index int) {
 func (parser *MessageParser) parsePacket(pcapPkt *PcapPacket) *Packet {
 	pckt, err := ParsePacket(pcapPkt.Data, pcapPkt.LType, pcapPkt.LTypeLen, pcapPkt.Ci, false)
 	if err != nil {
-		stats.Add("packet_error", 1)
+		if _, empty := err.(EmptyPacket); !empty {
+			stats.Add("packet_error", 1)
+		}
 		return nil
 	}
 
@@ -350,6 +361,8 @@ func (parser *MessageParser) processPacket(pckt *Packet) {
 
 	m = new(Message)
 	m.Direction = pckt.Direction
+	m.SrcAddr = pckt.SrcIP.String()
+	m.DstAddr = pckt.DstIP.String()
 
 	parser.m[mIDX][mID] = m
 
@@ -371,10 +384,36 @@ func (parser *MessageParser) addPacket(m *Message, pckt *Packet) bool {
 	if parser.End != nil {
 		if parser.End(m) {
 			parser.Emit(m)
+			return true
 		}
+
+		parser.Fix100Continue(m)
 	}
 
 	return true
+}
+
+func (parser *MessageParser) Fix100Continue(m *Message) {
+	if state, ok := m.feedback.(*proto.HTTPState); ok && state.Continue100 {
+		delete(parser.m[m.Idx], m.packets[0].MessageID())
+
+		// Shift Ack by given offset
+		// Size of "HTTP/1.1 100 Continue\r\n\r\n" message
+		for _, p := range m.packets {
+			p.messageID = 0
+			p.Ack += 25
+		}
+
+		// If next section was aready approved and received, merge messages
+		if next, found := parser.m[m.Idx][m.packets[0].MessageID()]; found {
+			for _, p := range next.packets {
+				parser.addPacket(m, p)
+			}
+		}
+
+		// Re-add (or override) again with new message and ID
+		parser.m[m.Idx][m.packets[0].MessageID()] = m
+	}
 }
 
 func (parser *MessageParser) Read() *Message {

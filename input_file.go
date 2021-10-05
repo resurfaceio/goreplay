@@ -242,7 +242,7 @@ func (i *FileInput) init() (err error) {
 
 		resp, err := svc.ListObjects(params)
 		if err != nil {
-			Debug(0, "[INPUT-FILE] Error while retreiving list of files from S3", i.path, err)
+			Debug(2, "[INPUT-FILE] Error while retrieving list of files from S3", i.path, err)
 			return err
 		}
 
@@ -250,13 +250,13 @@ func (i *FileInput) init() (err error) {
 			matches = append(matches, "s3://"+bucket+"/"+(*c.Key))
 		}
 	} else if matches, err = filepath.Glob(i.path); err != nil {
-		Debug(0, "[INPUT-FILE] Wrong file pattern", i.path, err)
+		Debug(2, "[INPUT-FILE] Wrong file pattern", i.path, err)
 		return
 	}
 
 	if len(matches) == 0 {
-		Debug(0, "[INPUT-FILE] No files match pattern: ", i.path)
-		return errors.New("No matching files")
+		Debug(2, "[INPUT-FILE] No files match pattern: ", i.path)
+		return errors.New("no matching files")
 	}
 
 	i.readers = make([]*fileInputReader, len(matches))
@@ -395,7 +395,7 @@ func (i *FileInput) emit() {
 	i.stats.Set("max_wait", time.Duration(maxWait))
 	i.stats.Set("min_wait", time.Duration(minWait))
 
-	Debug(0, fmt.Sprintf("[INPUT-FILE] FileInput: end of file '%s'\n", i.path))
+	Debug(2, fmt.Sprintf("[INPUT-FILE] FileInput: end of file '%s'\n", i.path))
 
 	if i.dryRun {
 		fmt.Printf("Records found: %v\nFiles processed: %v\nBytes processed: %v\nMax wait: %v\nMin wait: %v\nFirst wait: %v\nIt will take `%v` to replay at current speed.\nFound %v records with out of order timestamp\n",

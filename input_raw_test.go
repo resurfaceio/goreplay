@@ -122,10 +122,11 @@ func TestRAWInputNoKeepAlive(t *testing.T) {
 	output := NewTestOutput(func(msg *Message) {
 		if msg.Meta[0] == '1' {
 			atomic.AddInt64(&reqCounter, 1)
+			wg.Done()
 		} else {
 			atomic.AddInt64(&respCounter, 1)
+			wg.Done()
 		}
-		wg.Done()
 	})
 
 	plugins := &InOutPlugins{
