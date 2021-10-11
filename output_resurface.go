@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"time"
 
 	// "io/ioutil"
 	"log"
@@ -16,7 +15,7 @@ import (
 
 	"github.com/buger/goreplay/byteutils"
 
-	resurface_logger "github.com/resurfaceio/logger-go"
+	resurface_logger "github.com/resurfaceio/logger-go/v2"
 )
 
 type ResurfaceConfig struct {
@@ -102,12 +101,12 @@ func (o *ResurfaceOutput) sendRequest(id string) error {
 	}
 
 	reqMeta := payloadMeta(o.requests[id].Meta)
-	// respMeta := payloadMeta(o.responses[id].Meta)
+	respMeta := payloadMeta(o.responses[id].Meta)
 
 	reqTimestamp, _ := strconv.ParseInt(byteutils.SliceToString(reqMeta[2]), 10, 64)
-	// respTimestamp, _ := strconv.ParseInt(byteutils.SliceToString(respMeta[2]), 10, 64)
+	respTimestamp, _ := strconv.ParseInt(byteutils.SliceToString(respMeta[2]), 10, 64)
 
-	resurface_logger.SendHttpMessage(o.rlogger, resp, req, time.Unix(0, reqTimestamp))
+	resurface_logger.SendHttpMessage(o.rlogger, resp, req, respTimestamp/1000000, (respTimestamp-reqTimestamp)/1000000)
 
 	// tags := []string{
 	// 	fmt.Sprintf(`["now", "%d"]`, reqTimestamp/1000000),
