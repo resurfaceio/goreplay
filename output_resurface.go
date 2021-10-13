@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"time"
 
 	// "io/ioutil"
 	"log"
@@ -56,7 +57,24 @@ func NewResurfaceOutput(address string, rules string) PluginWriter {
 	o.responses = make(map[string]*Message)
 	o.requests = make(map[string]*Message)
 
+	go o.StrayRequestsCollector()
+
 	return o
+}
+
+func (o *ResurfaceOutput) StrayRequestsCollector() {
+	var n int
+	for {
+		n = len(o.requests)
+		for (n > 0) && (n != len(o.responses)) {
+			for id := range o.requests {
+				if _, hasResponse := o.responses[id]; !hasResponse {
+					delete(o.requests, id)
+				}
+			}
+		}
+		time.Sleep(time.Minute)
+	}
 }
 
 func (o *ResurfaceOutput) PluginWrite(msg *Message) (n int, err error) {
@@ -108,6 +126,10 @@ func (o *ResurfaceOutput) sendRequest(id string) error {
 
 	resurface_logger.SendHttpMessage(o.rlogger, resp, req, respTimestamp/1000000, (respTimestamp-reqTimestamp)/1000000)
 
+	delete(o.requests, id)
+	delete(o.responses, id)
+
+	// Test message
 	// tags := []string{
 	// 	fmt.Sprintf(`["now", "%d"]`, reqTimestamp/1000000),
 	// 	fmt.Sprintf(`["request_method", "%v"]`, req.Method),
@@ -118,9 +140,6 @@ func (o *ResurfaceOutput) sendRequest(id string) error {
 	// }
 
 	// payload := "[" + strings.Join(tags, ",") + "]"
-
-	// delete(o.requests, id)
-	// delete(o.responses, id)
 
 	// resResp, err := o.client.Post(o.config.url.String(), "application/json", bufio.NewReader(strings.NewReader(payload)))
 	// if err != nil {
