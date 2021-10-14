@@ -63,17 +63,17 @@ func NewResurfaceOutput(address string, rules string) PluginWriter {
 }
 
 func (o *ResurfaceOutput) StrayRequestsCollector() {
-	var n int
 	for {
-		n = len(o.requests)
-		for (n > 0) && (n != len(o.responses)) {
-			for id := range o.requests {
-				if _, hasResponse := o.responses[id]; !hasResponse {
+		n := len(o.requests)
+		if (n > 0) && (n != len(o.responses)) {
+			for id, req := range o.requests {
+				ts, _ := strconv.ParseInt(byteutils.SliceToString(payloadMeta(req.Meta)[2]), 10, 64)
+				if _, hasResponse := o.responses[id]; time.Now().UnixNano() >= ts+int64(time.Minute) && !hasResponse {
 					delete(o.requests, id)
 				}
 			}
 		}
-		time.Sleep(time.Minute)
+		time.Sleep(time.Minute / 6)
 	}
 }
 
