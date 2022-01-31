@@ -27,6 +27,7 @@ type RAWInputConfig struct {
 	RealIPHeader    string             `json:"input-raw-realip-header"`
 	Stats           bool               `json:"input-raw-stats"`
 	AllowIncomplete bool               `json:"input-raw-allow-incomplete"`
+	IgnoreInterface MultiOption        `json:"input-raw-ignore-interface"`
 	quit            chan bool          // Channel used only to indicate goroutine should shutdown
 	host            string
 	ports           []uint16
@@ -125,7 +126,7 @@ func (i *RAWInput) PluginRead() (*Message, error) {
 
 func (i *RAWInput) listen(address string) {
 	var err error
-	i.listener, err = capture.NewListener(i.host, i.ports, "", i.Engine, i.Protocol, i.TrackResponse, i.Expire, i.AllowIncomplete)
+	i.listener, err = capture.NewListener(i.host, i.ports, "", i.Engine, i.Protocol, i.TrackResponse, i.Expire, i.AllowIncomplete, []string(i.IgnoreInterface))
 	if err != nil {
 		log.Fatal(err)
 	}

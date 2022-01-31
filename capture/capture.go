@@ -67,6 +67,7 @@ type Listener struct {
 	allowIncomplete bool
 	messages        chan *tcp.Message
 	protocol        tcp.TCPProtocol
+	ignoreInterface []string
 
 	host string // pcap file name or interface (name, hardware addr, index or ip address)
 
@@ -126,7 +127,7 @@ func (eng *EngineType) String() (e string) {
 // NewListener creates and initialize a new Listener. if transport or/and engine are invalid/unsupported
 // is "tcp" and "pcap", are assumed. l.Engine and l.Transport can help to get the values used.
 // if there is an error it will be associated with getting network interfaces
-func NewListener(host string, ports []uint16, transport string, engine EngineType, protocol tcp.TCPProtocol, trackResponse bool, expiry time.Duration, allowIncomplete bool) (l *Listener, err error) {
+func NewListener(host string, ports []uint16, transport string, engine EngineType, protocol tcp.TCPProtocol, trackResponse bool, expiry time.Duration, allowIncomplete bool, ignoreInterface []string) (l *Listener, err error) {
 	l = &Listener{}
 
 	l.host = host
@@ -148,6 +149,7 @@ func NewListener(host string, ports []uint16, transport string, engine EngineTyp
 	l.allowIncomplete = allowIncomplete
 	l.protocol = protocol
 	l.messages = make(chan *tcp.Message, 10000)
+	l.ignoreInterface = ignoreInterface
 
 	switch engine {
 	default:
@@ -357,7 +359,7 @@ func http1EndHint(m *tcp.Message) bool {
 	if m.MissingChunk() {
 		return false
 	}
-	
+
 	req, res := http1StartHint(m.Packets()[0])
 	return proto.HasFullPayload(m, m.PacketData()...) && (req || res)
 }
@@ -575,6 +577,19 @@ func (l *Listener) setInterfaces() (err error) {
 	}
 
 	for _, pi := range pifis {
+		ignore := false
+		for _, ig := range l.ignoreInterface {
+			fmt.Println(pi.Name, ig)
+			if pi.Name == ig {
+				ignore = true
+				break
+			}
+		}
+
+		if ignore {
+			continue
+		}
+
 		if isDevice(l.host, pi) {
 			l.Interfaces = []pcap.Interface{pi}
 			return
