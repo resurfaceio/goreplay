@@ -579,7 +579,6 @@ func (l *Listener) setInterfaces() (err error) {
 	for _, pi := range pifis {
 		ignore := false
 		for _, ig := range l.ignoreInterface {
-			fmt.Println(pi.Name, ig)
 			if pi.Name == ig {
 				ignore = true
 				break
