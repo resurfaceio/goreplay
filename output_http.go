@@ -25,8 +25,8 @@ const (
 type response struct {
 	payload       []byte
 	uuid          []byte
-	roundTripTime int64
 	startedAt     int64
+	roundTripTime int64
 }
 
 // HTTPOutputConfig struct for holding http output configuration
@@ -206,7 +206,7 @@ func (o *HTTPOutput) PluginRead() (*Message, error) {
 		msg.Data = resp.payload
 	}
 
-	msg.Meta = payloadHeader(ReplayedResponsePayload, resp.uuid, resp.roundTripTime, resp.startedAt)
+	msg.Meta = payloadHeader(ReplayedResponsePayload, resp.uuid, resp.startedAt, resp.roundTripTime)
 
 	return &msg, nil
 }
