@@ -4,23 +4,59 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"sync"
 	"time"
+
+	"github.com/buger/goreplay/size"
 )
 
 // DEMO indicates that goreplay is running in demo mode
 var DEMO string
 
 // MultiOption allows to specify multiple flags with same name and collects all values into array
-type MultiOption []string
+type MultiOption struct {
+	a *[]string
+}
 
 func (h *MultiOption) String() string {
-	return fmt.Sprint(*h)
+	if h.a == nil {
+		return ""
+	}
+	return fmt.Sprint(*h.a)
 }
 
 // Set gets called multiple times for each flag with same name
 func (h *MultiOption) Set(value string) error {
-	*h = append(*h, value)
+	if h.a == nil {
+		return nil
+	}
+
+	*h.a = append(*h.a, value)
+	return nil
+}
+
+// MultiOption allows to specify multiple flags with same name and collects all values into array
+type MultiIntOption struct {
+	a *[]int
+}
+
+func (h *MultiIntOption) String() string {
+	if h.a == nil {
+		return ""
+	}
+
+	return fmt.Sprint(*h.a)
+}
+
+// Set gets called multiple times for each flag with same name
+func (h *MultiIntOption) Set(value string) error {
+	if h.a == nil {
+		return nil
+	}
+
+	val, _ := strconv.Atoi(value)
+	*h.a = append(*h.a, val)
 	return nil
 }
 
@@ -34,37 +70,39 @@ type AppSettings struct {
 	RecognizeTCPSessions bool   `json:"recognize-tcp-sessions"`
 	Pprof                string `json:"http-pprof"`
 
-	InputDummy   MultiOption `json:"input-dummy"`
-	OutputDummy  MultiOption
+	CopyBufferSize size.Size `json:"copy-buffer-size"`
+
+	InputDummy   []string `json:"input-dummy"`
+	OutputDummy  []string
 	OutputStdout bool `json:"output-stdout"`
 	OutputNull   bool `json:"output-null"`
 
-	InputTCP        MultiOption `json:"input-tcp"`
+	InputTCP        []string `json:"input-tcp"`
 	InputTCPConfig  TCPInputConfig
-	OutputTCP       MultiOption `json:"output-tcp"`
+	OutputTCP       []string `json:"output-tcp"`
 	OutputTCPConfig TCPOutputConfig
 	OutputTCPStats  bool `json:"output-tcp-stats"`
 
-	InputFile          MultiOption   `json:"input-file"`
+	InputFile          []string      `json:"input-file"`
 	InputFileLoop      bool          `json:"input-file-loop"`
 	InputFileReadDepth int           `json:"input-file-read-depth"`
 	InputFileDryRun    bool          `json:"input-file-dry-run"`
 	InputFileMaxWait   time.Duration `json:"input-file-max-wait"`
-	OutputFile         MultiOption   `json:"output-file"`
+	OutputFile         []string      `json:"output-file"`
 	OutputFileConfig   FileOutputConfig
 
-	InputRAW MultiOption `json:"input_raw"`
-	RAWInputConfig
+	InputRAW       []string `json:"input_raw"`
+	InputRAWConfig RAWInputConfig
 
 	Middleware string `json:"middleware"`
 
-	InputHTTP    MultiOption
-	OutputHTTP   MultiOption `json:"output-http"`
-	PrettifyHTTP bool        `json:"prettify-http"`
+	InputHTTP    []string
+	OutputHTTP   []string `json:"output-http"`
+	PrettifyHTTP bool     `json:"prettify-http"`
 
 	OutputHTTPConfig HTTPOutputConfig
 
-	OutputBinary       MultiOption `json:"output-binary"`
+	OutputBinary       []string `json:"output-binary"`
 	OutputBinaryConfig BinaryOutputConfig
 
 	ModifierConfig HTTPModifierConfig
@@ -98,29 +136,29 @@ func init() {
 	flag.BoolVar(&Settings.SplitOutput, "split-output", false, "By default each output gets same traffic. If set to `true` it splits traffic equally among all outputs.")
 	flag.BoolVar(&Settings.RecognizeTCPSessions, "recognize-tcp-sessions", false, "[PRO] If turned on http output will create separate worker for each TCP session. Splitting output will session based as well.")
 
-	flag.Var(&Settings.InputDummy, "input-dummy", "Used for testing outputs. Emits 'Get /' request every 1s")
+	flag.Var(&MultiOption{&Settings.InputDummy}, "input-dummy", "Used for testing outputs. Emits 'Get /' request every 1s")
 	flag.BoolVar(&Settings.OutputStdout, "output-stdout", false, "Used for testing inputs. Just prints to console data coming from inputs.")
 	flag.BoolVar(&Settings.OutputNull, "output-null", false, "Used for testing inputs. Drops all requests.")
 
-	flag.Var(&Settings.InputTCP, "input-tcp", "Used for internal communication between Gor instances. Example: \n\t# Receive requests from other Gor instances on 28020 port, and redirect output to staging\n\tgor --input-tcp :28020 --output-http staging.com")
+	flag.Var(&MultiOption{&Settings.InputTCP}, "input-tcp", "Used for internal communication between Gor instances. Example: \n\t# Receive requests from other Gor instances on 28020 port, and redirect output to staging\n\tgor --input-tcp :28020 --output-http staging.com")
 	flag.BoolVar(&Settings.InputTCPConfig.Secure, "input-tcp-secure", false, "Turn on TLS security. Do not forget to specify certificate and key files.")
 	flag.StringVar(&Settings.InputTCPConfig.CertificatePath, "input-tcp-certificate", "", "Path to PEM encoded certificate file. Used when TLS turned on.")
 	flag.StringVar(&Settings.InputTCPConfig.KeyPath, "input-tcp-certificate-key", "", "Path to PEM encoded certificate key file. Used when TLS turned on.")
 
-	flag.Var(&Settings.OutputTCP, "output-tcp", "Used for internal communication between Gor instances. Example: \n\t# Listen for requests on 80 port and forward them to other Gor instance on 28020 port\n\tgor --input-raw :80 --output-tcp replay.local:28020")
+	flag.Var(&MultiOption{&Settings.OutputTCP}, "output-tcp", "Used for internal communication between Gor instances. Example: \n\t# Listen for requests on 80 port and forward them to other Gor instance on 28020 port\n\tgor --input-raw :80 --output-tcp replay.local:28020")
 	flag.BoolVar(&Settings.OutputTCPConfig.Secure, "output-tcp-secure", false, "Use TLS secure connection. --input-file on another end should have TLS turned on as well.")
 	flag.BoolVar(&Settings.OutputTCPConfig.SkipVerify, "output-tcp-skip-verify", false, "Don't verify hostname on TLS secure connection.")
 	flag.BoolVar(&Settings.OutputTCPConfig.Sticky, "output-tcp-sticky", false, "Use Sticky connection. Request/Response with same ID will be sent to the same connection.")
 	flag.IntVar(&Settings.OutputTCPConfig.Workers, "output-tcp-workers", 10, "Number of parallel tcp connections, default is 10")
 	flag.BoolVar(&Settings.OutputTCPStats, "output-tcp-stats", false, "Report TCP output queue stats to console every 5 seconds.")
 
-	flag.Var(&Settings.InputFile, "input-file", "Read requests from file: \n\tgor --input-file ./requests.gor --output-http staging.com")
+	flag.Var(&MultiOption{&Settings.InputFile}, "input-file", "Read requests from file: \n\tgor --input-file ./requests.gor --output-http staging.com")
 	flag.BoolVar(&Settings.InputFileLoop, "input-file-loop", false, "Loop input files, useful for performance testing.")
 	flag.IntVar(&Settings.InputFileReadDepth, "input-file-read-depth", 100, "GoReplay tries to read and cache multiple records, in advance. In parallel it also perform sorting of requests, if they came out of order. Since it needs hold this buffer in memory, bigger values can cause worse performance")
 	flag.BoolVar(&Settings.InputFileDryRun, "input-file-dry-run", false, "Simulate reading from the data source without replaying it. You will get information about expected replay time, number of found records etc.")
 	flag.DurationVar(&Settings.InputFileMaxWait, "input-file-max-wait", 0, "Set the maximum time between requests. Can help in situations when you have too long periods between request, and you want to skip them. Example: --input-raw-max-wait 1s")
 
-	flag.Var(&Settings.OutputFile, "output-file", "Write incoming requests to file: \n\tgor --input-raw :80 --output-file ./requests.gor")
+	flag.Var(&MultiOption{&Settings.OutputFile}, "output-file", "Write incoming requests to file: \n\tgor --input-raw :80 --output-file ./requests.gor")
 	flag.DurationVar(&Settings.OutputFileConfig.FlushInterval, "output-file-flush-interval", time.Second, "Interval for forcing buffer flush to the file, default: 1s.")
 	flag.BoolVar(&Settings.OutputFileConfig.Append, "output-file-append", false, "The flushed chunk is appended to existence file or not. ")
 	flag.Var(&Settings.OutputFileConfig.SizeLimit, "output-file-size-limit", "Size of each chunk. Default: 32mb")
@@ -131,27 +169,32 @@ func init() {
 
 	flag.BoolVar(&Settings.PrettifyHTTP, "prettify-http", false, "If enabled, will automatically decode requests and responses with: Content-Encoding: gzip and Transfer-Encoding: chunked. Useful for debugging, in conjunction with --output-stdout")
 
-	// input raw flags
-	flag.Var(&Settings.InputRAW, "input-raw", "Capture traffic from given port (use RAW sockets and require *sudo* access):\n\t# Capture traffic from 8080 port\n\tgor --input-raw :8080 --output-http staging.com")
-	flag.BoolVar(&Settings.TrackResponse, "input-raw-track-response", false, "If turned on Gor will track responses in addition to requests, and they will be available to middleware and file output.")
-	flag.Var(&Settings.Engine, "input-raw-engine", "Intercept traffic using `libpcap` (default), `raw_socket` or `pcap_file`")
-	flag.Var(&Settings.Protocol, "input-raw-protocol", "Specify application protocol of intercepted traffic. Possible values: http, binary")
-	flag.StringVar(&Settings.RealIPHeader, "input-raw-realip-header", "", "If not blank, injects header with given name and real IP value to the request payload. Usually this header should be named: X-Real-IP")
-	flag.DurationVar(&Settings.Expire, "input-raw-expire", time.Second*2, "How much it should wait for the last TCP packet, till consider that TCP message complete.")
-	flag.StringVar(&Settings.BPFFilter, "input-raw-bpf-filter", "", "BPF filter to write custom expressions. Can be useful in case of non standard network interfaces like tunneling or SPAN port. Example: --input-raw-bpf-filter 'dst port 80'")
-	flag.StringVar(&Settings.TimestampType, "input-raw-timestamp-type", "", "Possible values: PCAP_TSTAMP_HOST, PCAP_TSTAMP_HOST_LOWPREC, PCAP_TSTAMP_HOST_HIPREC, PCAP_TSTAMP_ADAPTER, PCAP_TSTAMP_ADAPTER_UNSYNCED. This values not supported on all systems, GoReplay will tell you available values of you put wrong one.")
 	flag.Var(&Settings.CopyBufferSize, "copy-buffer-size", "Set the buffer size for an individual request (default 5MB)")
-	flag.BoolVar(&Settings.Snaplen, "input-raw-override-snaplen", false, "Override the capture snaplen to be 64k. Required for some Virtualized environments")
-	flag.DurationVar(&Settings.BufferTimeout, "input-raw-buffer-timeout", 0, "set the pcap timeout. for immediate mode don't set this flag")
-	flag.Var(&Settings.BufferSize, "input-raw-buffer-size", "Controls size of the OS buffer which holds packets until they dispatched. Default value depends by system: in Linux around 2MB. If you see big package drop, increase this value.")
-	flag.BoolVar(&Settings.Promiscuous, "input-raw-promisc", false, "enable promiscuous mode")
-	flag.BoolVar(&Settings.Monitor, "input-raw-monitor", false, "enable RF monitor mode")
-	flag.BoolVar(&Settings.Stats, "input-raw-stats", false, "enable stats generator on raw TCP messages")
-	flag.BoolVar(&Settings.AllowIncomplete, "input-raw-allow-incomplete", false, "If turned on Gor will record HTTP messages with missing packets")
+
+	// input raw flags
+	flag.Var(&MultiOption{&Settings.InputRAW}, "input-raw", "Capture traffic from given port (use RAW sockets and require *sudo* access):\n\t# Capture traffic from 8080 port\n\tgor --input-raw :8080 --output-http staging.com")
+	flag.BoolVar(&Settings.InputRAWConfig.TrackResponse, "input-raw-track-response", false, "If turned on Gor will track responses in addition to requests, and they will be available to middleware and file output.")
+	flag.IntVar(&Settings.InputRAWConfig.VXLANPort, "input-raw-vxlan-port", 4789, "VXLAN port. Can be used only when engine set to `vxlan`. Default: 4789")
+	flag.Var(&MultiIntOption{&Settings.InputRAWConfig.VXLANVNIs}, "input-raw-vxlan-vni", "VXLAN VNI to capture. By default capture all VNIs. Ignore VNI by setting them with minus sign, example: `--input-raw-vxlan-vni -2`")
+	flag.BoolVar(&Settings.InputRAWConfig.VLAN, "input-raw-vlan", false, "Enable VLAN (802.1Q) support")
+	flag.Var(&MultiIntOption{&Settings.InputRAWConfig.VLANVIDs}, "input-raw-vlan-vid", "VLAN VID to capture. By default capture all VIDs")
+	flag.Var(&Settings.InputRAWConfig.Engine, "input-raw-engine", "Intercept traffic using `libpcap` (default), `raw_socket`, `pcap_file`, `vxlan`")
+	flag.Var(&Settings.InputRAWConfig.Protocol, "input-raw-protocol", "Specify application protocol of intercepted traffic. Possible values: http, binary")
+	flag.StringVar(&Settings.InputRAWConfig.RealIPHeader, "input-raw-realip-header", "", "If not blank, injects header with given name and real IP value to the request payload. Usually this header should be named: X-Real-IP")
+	flag.DurationVar(&Settings.InputRAWConfig.Expire, "input-raw-expire", time.Second*2, "How much it should wait for the last TCP packet, till consider that TCP message complete.")
+	flag.StringVar(&Settings.InputRAWConfig.BPFFilter, "input-raw-bpf-filter", "", "BPF filter to write custom expressions. Can be useful in case of non standard network interfaces like tunneling or SPAN port. Example: --input-raw-bpf-filter 'dst port 80'")
+	flag.StringVar(&Settings.InputRAWConfig.TimestampType, "input-raw-timestamp-type", "", "Possible values: PCAP_TSTAMP_HOST, PCAP_TSTAMP_HOST_LOWPREC, PCAP_TSTAMP_HOST_HIPREC, PCAP_TSTAMP_ADAPTER, PCAP_TSTAMP_ADAPTER_UNSYNCED. This values not supported on all systems, GoReplay will tell you available values of you put wrong one.")
+	flag.BoolVar(&Settings.InputRAWConfig.Snaplen, "input-raw-override-snaplen", false, "Override the capture snaplen to be 64k. Required for some Virtualized environments")
+	flag.DurationVar(&Settings.InputRAWConfig.BufferTimeout, "input-raw-buffer-timeout", 0, "set the pcap timeout. for immediate mode don't set this flag")
+	flag.Var(&Settings.InputRAWConfig.BufferSize, "input-raw-buffer-size", "Controls size of the OS buffer which holds packets until they dispatched. Default value depends by system: in Linux around 2MB. If you see big package drop, increase this value.")
+	flag.BoolVar(&Settings.InputRAWConfig.Promiscuous, "input-raw-promisc", false, "enable promiscuous mode")
+	flag.BoolVar(&Settings.InputRAWConfig.Monitor, "input-raw-monitor", false, "enable RF monitor mode")
+	flag.BoolVar(&Settings.InputRAWConfig.Stats, "input-raw-stats", false, "enable stats generator on raw TCP messages")
+	flag.BoolVar(&Settings.InputRAWConfig.AllowIncomplete, "input-raw-allow-incomplete", false, "If turned on Gor will record HTTP messages with missing packets")
 
 	flag.StringVar(&Settings.Middleware, "middleware", "", "Used for modifying traffic using external command")
 
-	flag.Var(&Settings.OutputHTTP, "output-http", "Forwards incoming requests to given http address.\n\t# Redirect all incoming requests to staging.com address \n\tgor --input-raw :80 --output-http http://staging.com")
+	flag.Var(&MultiOption{&Settings.OutputHTTP}, "output-http", "Forwards incoming requests to given http address.\n\t# Redirect all incoming requests to staging.com address \n\tgor --input-raw :80 --output-http http://staging.com")
 
 	/* outputHTTPConfig */
 	flag.Var(&Settings.OutputHTTPConfig.BufferSize, "output-http-response-buffer", "HTTP response buffer size, all data after this size will be discarded.")
@@ -171,7 +214,7 @@ func init() {
 	flag.StringVar(&Settings.OutputHTTPConfig.ElasticSearch, "output-http-elasticsearch", "", "Send request and response stats to ElasticSearch:\n\tgor --input-raw :8080 --output-http staging.com --output-http-elasticsearch 'es_host:api_port/index_name'")
 	/* outputHTTPConfig */
 
-	flag.Var(&Settings.OutputBinary, "output-binary", "Forwards incoming binary payloads to given address.\n\t# Redirect all incoming requests to staging.com address \n\tgor --input-raw :80 --input-raw-protocol binary --output-binary staging.com:80")
+	flag.Var(&MultiOption{&Settings.OutputBinary}, "output-binary", "Forwards incoming binary payloads to given address.\n\t# Redirect all incoming requests to staging.com address \n\tgor --input-raw :80 --input-raw-protocol binary --output-binary staging.com:80")
 
 	/* outputBinaryConfig */
 	flag.Var(&Settings.OutputBinaryConfig.BufferSize, "output-tcp-response-buffer", "TCP response buffer size, all data after this size will be discarded.")

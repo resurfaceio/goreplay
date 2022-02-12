@@ -289,18 +289,28 @@ func (parser *MessageParser) parsePacket(pcapPkt *PcapPacket) *Packet {
 	}
 
 	for _, p := range parser.ports {
-		if pckt.DstPort == p {
-			for _, ip := range parser.ips {
-				if pckt.DstIP.Equal(ip) {
-					pckt.Direction = DirIncoming
-					break
-				}
-			}
+		if pckt.DstPort == p && containsOrEmpty(pckt.DstIP, parser.ips) {
+			pckt.Direction = DirIncoming
+			break
+		} else if pckt.SrcPort == p && containsOrEmpty(pckt.SrcIP, parser.ips) {
+			pckt.Direction = DirOutcoming
 			break
 		}
 	}
 
 	return pckt
+}
+
+func containsOrEmpty(element net.IP, ipList []net.IP) bool {
+	if len(ipList) == 0 {
+		return true
+	}
+	for _, ip := range ipList {
+		if ip.Equal(element) {
+			return true
+		}
+	}
+	return false
 }
 
 func (parser *MessageParser) processPacket(pckt *Packet) {

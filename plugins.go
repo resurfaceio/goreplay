@@ -106,7 +106,7 @@ func NewPlugins() *InOutPlugins {
 	}
 
 	for _, options := range Settings.InputRAW {
-		plugins.registerPlugin(NewRAWInput, options, Settings.RAWInputConfig)
+		plugins.registerPlugin(NewRAWInput, options, Settings.InputRAWConfig)
 	}
 
 	for _, options := range Settings.InputTCP {

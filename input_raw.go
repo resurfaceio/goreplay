@@ -8,45 +8,36 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/buger/goreplay/capture"
 	"github.com/buger/goreplay/proto"
-	"github.com/buger/goreplay/size"
 	"github.com/buger/goreplay/tcp"
 )
 
 // RAWInputConfig represents configuration that can be applied on raw input
 type RAWInputConfig struct {
 	capture.PcapOptions
-	Expire          time.Duration      `json:"input-raw-expire"`
-	CopyBufferSize  size.Size          `json:"copy-buffer-size"`
-	Engine          capture.EngineType `json:"input-raw-engine"`
-	TrackResponse   bool               `json:"input-raw-track-response"`
-	Protocol        tcp.TCPProtocol    `json:"input-raw-protocol"`
-	RealIPHeader    string             `json:"input-raw-realip-header"`
-	Stats           bool               `json:"input-raw-stats"`
-	AllowIncomplete bool               `json:"input-raw-allow-incomplete"`
-	quit            chan bool          // Channel used only to indicate goroutine should shutdown
-	host            string
-	ports           []uint16
 }
 
 // RAWInput used for intercepting traffic for given address
 type RAWInput struct {
 	sync.Mutex
-	RAWInputConfig
+	config         RAWInputConfig
 	messageStats   []tcp.Stats
 	listener       *capture.Listener
 	messageParser  *tcp.MessageParser
 	cancelListener context.CancelFunc
 	closed         bool
+
+	quit  chan bool // Channel used only to indicate goroutine should shutdown
+	host  string
+	ports []uint16
 }
 
 // NewRAWInput constructor for RAWInput. Accepts raw input config as arguments.
 func NewRAWInput(address string, config RAWInputConfig) (i *RAWInput) {
 	i = new(RAWInput)
-	i.RAWInputConfig = config
+	i.config = config
 	i.quit = make(chan bool)
 
 	host, _ports, err := net.SplitHostPort(address)
@@ -62,7 +53,7 @@ func NewRAWInput(address string, config RAWInputConfig) (i *RAWInput) {
 	}
 
 	if strings.HasSuffix(host, "pcap") {
-		i.RAWInputConfig.Engine = capture.EnginePcapFile
+		i.config.Engine = capture.EnginePcapFile
 	}
 
 	var ports []uint16
@@ -101,8 +92,8 @@ func (i *RAWInput) PluginRead() (*Message, error) {
 	var msgType byte = ResponsePayload
 	if msgTCP.Direction == tcp.DirIncoming {
 		msgType = RequestPayload
-		if i.RealIPHeader != "" {
-			msg.Data = proto.SetHeader(msg.Data, []byte(i.RealIPHeader), []byte(msgTCP.SrcAddr))
+		if i.config.RealIPHeader != "" {
+			msg.Data = proto.SetHeader(msg.Data, []byte(i.config.RealIPHeader), []byte(msgTCP.SrcAddr))
 		}
 	}
 	msg.Meta = payloadHeader(msgType, msgTCP.UUID(), msgTCP.Start.UnixNano(), msgTCP.End.UnixNano()-msgTCP.Start.UnixNano())
@@ -115,7 +106,7 @@ func (i *RAWInput) PluginRead() (*Message, error) {
 	if msgTCP.TimedOut {
 		Debug(2, "[INPUT-RAW] message timeout reached, increase input-raw-expire")
 	}
-	if i.Stats {
+	if i.config.Stats {
 		stat := msgTCP.Stats
 		go i.addStats(stat)
 	}
@@ -125,11 +116,11 @@ func (i *RAWInput) PluginRead() (*Message, error) {
 
 func (i *RAWInput) listen(address string) {
 	var err error
-	i.listener, err = capture.NewListener(i.host, i.ports, "", i.Engine, i.Protocol, i.TrackResponse, i.Expire, i.AllowIncomplete)
+	i.listener, err = capture.NewListener(i.host, i.ports, i.config.PcapOptions)
 	if err != nil {
 		log.Fatal(err)
 	}
-	i.listener.SetPcapOptions(i.PcapOptions)
+
 	err = i.listener.Activate()
 	if err != nil {
 		log.Fatal(err)

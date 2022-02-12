@@ -37,6 +37,11 @@ sudo gor --input-raw :80 --input-raw-engine "raw_socket" --output-http "http://s
 
 You can read more about [[Replaying HTTP traffic]].
 
+You can use VXLAN or traffic mirroring from AWS to capture the traffic. The 4789 UDP port will be opened and that works as you are launched GoReplay on the source machine.
+
+```
+gor --input-raw :80 --input-raw-engine vxlan -output-stdout
+```
 
 ### Tracking original IP addresses
 You can use `--input-raw-realip-header` option to specify header name: If not blank, injects header with given name and real IP value to the request payload. Usually, this header should be named: `X-Real-IP`, but you can specify any name.

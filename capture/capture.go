@@ -41,34 +41,42 @@ type PcapStatProvider interface {
 // PcapOptions options that can be set on a pcap capture handle,
 // these options take effect on inactive pcap handles
 type PcapOptions struct {
-	BufferTimeout time.Duration `json:"input-raw-buffer-timeout"`
-	TimestampType string        `json:"input-raw-timestamp-type"`
-	BPFFilter     string        `json:"input-raw-bpf-filter"`
-	BufferSize    size.Size     `json:"input-raw-buffer-size"`
-	Promiscuous   bool          `json:"input-raw-promisc"`
-	Monitor       bool          `json:"input-raw-monitor"`
-	Snaplen       bool          `json:"input-raw-override-snaplen"`
+	BufferTimeout   time.Duration   `json:"input-raw-buffer-timeout"`
+	TimestampType   string          `json:"input-raw-timestamp-type"`
+	BPFFilter       string          `json:"input-raw-bpf-filter"`
+	BufferSize      size.Size       `json:"input-raw-buffer-size"`
+	Promiscuous     bool            `json:"input-raw-promisc"`
+	Monitor         bool            `json:"input-raw-monitor"`
+	Snaplen         bool            `json:"input-raw-override-snaplen"`
+	Engine          EngineType      `json:"input-raw-engine"`
+	VXLANPort       int             `json:"input-raw-vxlan-port"`
+	VXLANVNIs       []int           `json:"input-raw-vxlan-vni"`
+	VLAN            bool            `json:"input-raw-vlan"`
+	VLANVIDs        []int           `json:"input-raw-vlan-vid"`
+	Expire          time.Duration   `json:"input-raw-expire"`
+	TrackResponse   bool            `json:"input-raw-track-response"`
+	Protocol        tcp.TCPProtocol `json:"input-raw-protocol"`
+	RealIPHeader    string          `json:"input-raw-realip-header"`
+	Stats           bool            `json:"input-raw-stats"`
+	AllowIncomplete bool            `json:"input-raw-allow-incomplete"`
+	Transport       string
 }
 
 // Listener handle traffic capture, this is its representation.
 type Listener struct {
 	sync.Mutex
-	Transport  string       // transport layer default to tcp
+
+	config PcapOptions
+
 	Activate   func() error // function is used to activate the engine. it must be called before reading packets
 	Handles    map[string]packetHandle
 	Interfaces []pcap.Interface
 	loopIndex  int
 	Reading    chan bool // this channel is closed when the listener has started reading packets
-	PcapOptions
-	Engine          EngineType
-	ports           []uint16 // src or/and dst ports
-	trackResponse   bool
-	expiry          time.Duration
-	allowIncomplete bool
-	messages        chan *tcp.Message
-	protocol        tcp.TCPProtocol
+	messages   chan *tcp.Message
 
-	host string // pcap file name or interface (name, hardware addr, index or ip address)
+	ports []uint16
+	host  string // pcap file name or interface (name, hardware addr, index or ip address)
 
 	closeDone chan struct{}
 	quit      chan struct{}
@@ -88,6 +96,7 @@ const (
 	EnginePcapFile
 	EngineRawSocket
 	EngineAFPacket
+	EngineVXLAN
 )
 
 // Set is here so that EngineType can implement flag.Var
@@ -101,6 +110,8 @@ func (eng *EngineType) Set(v string) error {
 		*eng = EngineRawSocket
 	case "af_packet":
 		*eng = EngineAFPacket
+	case "vxlan":
+		*eng = EngineVXLAN
 	default:
 		return fmt.Errorf("invalid engine %s", v)
 	}
@@ -117,6 +128,8 @@ func (eng *EngineType) String() (e string) {
 		e = "raw_socket"
 	case EngineAFPacket:
 		e = "af_packet"
+	case EngineVXLAN:
+		e = "vxlan"
 	default:
 		e = ""
 	}
@@ -126,7 +139,7 @@ func (eng *EngineType) String() (e string) {
 // NewListener creates and initialize a new Listener. if transport or/and engine are invalid/unsupported
 // is "tcp" and "pcap", are assumed. l.Engine and l.Transport can help to get the values used.
 // if there is an error it will be associated with getting network interfaces
-func NewListener(host string, ports []uint16, transport string, engine EngineType, protocol tcp.TCPProtocol, trackResponse bool, expiry time.Duration, allowIncomplete bool) (l *Listener, err error) {
+func NewListener(host string, ports []uint16, config PcapOptions) (l *Listener, err error) {
 	l = &Listener{}
 
 	l.host = host
@@ -135,33 +148,27 @@ func NewListener(host string, ports []uint16, transport string, engine EngineTyp
 	}
 	l.ports = ports
 
-	l.Transport = "tcp"
-	if transport != "" {
-		l.Transport = transport
-	}
+	l.config = config
+	l.config.Transport = "tcp"
 	l.Handles = make(map[string]packetHandle)
-	l.trackResponse = trackResponse
+
 	l.closeDone = make(chan struct{})
 	l.quit = make(chan struct{})
 	l.Reading = make(chan bool)
-	l.expiry = expiry
-	l.allowIncomplete = allowIncomplete
-	l.protocol = protocol
 	l.messages = make(chan *tcp.Message, 10000)
 
-	switch engine {
+	switch l.config.Engine {
 	default:
-		l.Engine = EnginePcap
 		l.Activate = l.activatePcap
 	case EngineRawSocket:
-		l.Engine = EngineRawSocket
 		l.Activate = l.activateRawSocket
 	case EngineAFPacket:
-		l.Engine = EngineAFPacket
 		l.Activate = l.activateAFPacket
 	case EnginePcapFile:
-		l.Engine = EnginePcapFile
 		l.Activate = l.activatePcapFile
+		return
+	case EngineVXLAN:
+		l.Activate = l.activateVxLanSocket
 		return
 	}
 
@@ -170,12 +177,6 @@ func NewListener(host string, ports []uint16, transport string, engine EngineTyp
 		return nil, err
 	}
 	return
-}
-
-// SetPcapOptions set pcap options for all yet to be actived pcap handles
-// setting this on already activated handles will not have any effect
-func (l *Listener) SetPcapOptions(opts PcapOptions) {
-	l.PcapOptions = opts
 }
 
 // Listen listens for packets from the handles, and call handler on every packet received
@@ -216,24 +217,34 @@ func (l *Listener) Filter(ifi pcap.Interface) (filter string) {
 		hosts = interfaceAddresses(ifi)
 	}
 
-	filter = portsFilter(l.Transport, "dst", l.ports)
+	filter = portsFilter(l.config.Transport, "dst", l.ports)
 
-	if len(hosts) != 0 && !l.Promiscuous {
+	if len(hosts) != 0 && !l.config.Promiscuous {
 		filter = fmt.Sprintf("((%s) and (%s))", filter, hostsFilter("dst", hosts))
 	} else {
 		filter = fmt.Sprintf("(%s)", filter)
 	}
 
-	if l.trackResponse {
-		responseFilter := portsFilter(l.Transport, "src", l.ports)
+	if l.config.TrackResponse {
+		responseFilter := portsFilter(l.config.Transport, "src", l.ports)
 
-		if len(hosts) != 0 && !l.Promiscuous {
+		if len(hosts) != 0 && !l.config.Promiscuous {
 			responseFilter = fmt.Sprintf("((%s) and (%s))", responseFilter, hostsFilter("src", hosts))
 		} else {
 			responseFilter = fmt.Sprintf("(%s)", responseFilter)
 		}
 
 		filter = fmt.Sprintf("%s or %s", filter, responseFilter)
+	}
+
+	if l.config.VLAN {
+		if len(l.config.VLANVIDs) > 0 {
+			for _, vi := range l.config.VLANVIDs {
+				filter = fmt.Sprintf("vlan %d and ", vi) + filter
+			}
+		} else {
+			filter = "vlan and " + filter
+		}
 	}
 
 	return
@@ -249,29 +260,29 @@ func (l *Listener) PcapHandle(ifi pcap.Interface) (handle *pcap.Handle, err erro
 	}
 	defer inactive.CleanUp()
 
-	if l.TimestampType != "" && l.TimestampType != "go" {
+	if l.config.TimestampType != "" && l.config.TimestampType != "go" {
 		var ts pcap.TimestampSource
-		ts, err = pcap.TimestampSourceFromString(l.TimestampType)
+		ts, err = pcap.TimestampSourceFromString(l.config.TimestampType)
 		fmt.Println("Setting custom Timestamp Source. Supported values: `go`, ", inactive.SupportedTimestamps())
 		err = inactive.SetTimestampSource(ts)
 		if err != nil {
 			return nil, fmt.Errorf("%q: supported timestamps: %q, interface: %q", err, inactive.SupportedTimestamps(), ifi.Name)
 		}
 	}
-	if l.Promiscuous {
-		if err = inactive.SetPromisc(l.Promiscuous); err != nil {
+	if l.config.Promiscuous {
+		if err = inactive.SetPromisc(l.config.Promiscuous); err != nil {
 			return nil, fmt.Errorf("promiscuous mode error: %q, interface: %q", err, ifi.Name)
 		}
 	}
-	if l.Monitor {
-		if err = inactive.SetRFMon(l.Monitor); err != nil && !errors.Is(err, pcap.CannotSetRFMon) {
+	if l.config.Monitor {
+		if err = inactive.SetRFMon(l.config.Monitor); err != nil && !errors.Is(err, pcap.CannotSetRFMon) {
 			return nil, fmt.Errorf("monitor mode error: %q, interface: %q", err, ifi.Name)
 		}
 	}
 
 	var snap int
 
-	if !l.Snaplen {
+	if !l.config.Snaplen {
 		infs, _ := net.Interfaces()
 		for _, i := range infs {
 			if i.Name == ifi.Name {
@@ -288,16 +299,16 @@ func (l *Listener) PcapHandle(ifi pcap.Interface) (handle *pcap.Handle, err erro
 	if err != nil {
 		return nil, fmt.Errorf("snapshot length error: %q, interface: %q", err, ifi.Name)
 	}
-	if l.BufferSize > 0 {
-		err = inactive.SetBufferSize(int(l.BufferSize))
+	if l.config.BufferSize > 0 {
+		err = inactive.SetBufferSize(int(l.config.BufferSize))
 		if err != nil {
 			return nil, fmt.Errorf("handle buffer size error: %q, interface: %q", err, ifi.Name)
 		}
 	}
-	if l.BufferTimeout == 0 {
-		l.BufferTimeout = 2000 * time.Millisecond
+	if l.config.BufferTimeout == 0 {
+		l.config.BufferTimeout = 2000 * time.Millisecond
 	}
-	err = inactive.SetTimeout(l.BufferTimeout)
+	err = inactive.SetTimeout(l.config.BufferTimeout)
 	if err != nil {
 		return nil, fmt.Errorf("handle buffer timeout error: %q, interface: %q", err, ifi.Name)
 	}
@@ -306,7 +317,7 @@ func (l *Listener) PcapHandle(ifi pcap.Interface) (handle *pcap.Handle, err erro
 		return nil, fmt.Errorf("PCAP Activate device error: %q, interface: %q", err, ifi.Name)
 	}
 
-	bpfFilter := l.BPFFilter
+	bpfFilter := l.config.BPFFilter
 	if bpfFilter == "" {
 		bpfFilter = l.Filter(ifi)
 	}
@@ -325,16 +336,16 @@ func (l *Listener) SocketHandle(ifi pcap.Interface) (handle Socket, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("sock raw error: %q, interface: %q", err, ifi.Name)
 	}
-	if err = handle.SetPromiscuous(l.Promiscuous || l.Monitor); err != nil {
+	if err = handle.SetPromiscuous(l.config.Promiscuous || l.config.Monitor); err != nil {
 		return nil, fmt.Errorf("promiscuous mode error: %q, interface: %q", err, ifi.Name)
 	}
-	if l.BPFFilter == "" {
-		l.BPFFilter = l.Filter(ifi)
+	if l.config.BPFFilter == "" {
+		l.config.BPFFilter = l.Filter(ifi)
 	}
-	fmt.Println("BPF Filter: ", l.BPFFilter)
-	if err = handle.SetBPFFilter(l.BPFFilter); err != nil {
+	fmt.Println("BPF Filter: ", l.config.BPFFilter)
+	if err = handle.SetBPFFilter(l.config.BPFFilter); err != nil {
 		handle.Close()
-		return nil, fmt.Errorf("BPF filter error: %q%s, interface: %q", err, l.BPFFilter, ifi.Name)
+		return nil, fmt.Errorf("BPF filter error: %q%s, interface: %q", err, l.config.BPFFilter, ifi.Name)
 	}
 	handle.SetLoopbackIndex(int32(l.loopIndex))
 	return
@@ -357,7 +368,7 @@ func http1EndHint(m *tcp.Message) bool {
 	if m.MissingChunk() {
 		return false
 	}
-	
+
 	req, res := http1StartHint(m.Packets()[0])
 	return proto.HasFullPayload(m, m.PacketData()...) && (req || res)
 }
@@ -374,7 +385,7 @@ func (l *Listener) read() {
 			linkType := int(layers.LinkTypeEthernet)
 			if _, ok := hndl.handler.(*pcap.Handle); ok {
 				linkType = int(hndl.handler.(*pcap.Handle).LinkType())
-				linkSize, ok = pcapLinkTypeLength(linkType)
+				linkSize, ok = pcapLinkTypeLength(linkType, l.config.VLAN)
 				if !ok {
 					if os.Getenv("GORDEBUG") != "0" {
 						log.Printf("can not identify link type of an interface '%s'\n", key)
@@ -383,9 +394,9 @@ func (l *Listener) read() {
 				}
 			}
 
-			messageParser := tcp.NewMessageParser(l.messages, l.ports, hndl.ips, l.expiry, l.allowIncomplete)
+			messageParser := tcp.NewMessageParser(l.messages, l.ports, hndl.ips, l.config.Expire, l.config.AllowIncomplete)
 
-			if l.protocol == tcp.ProtocolHTTP {
+			if l.config.Protocol == tcp.ProtocolHTTP {
 				messageParser.Start = http1StartHint
 				messageParser.End = http1EndHint
 			}
@@ -408,7 +419,7 @@ func (l *Listener) read() {
 				default:
 					data, ci, err := hndl.handler.ReadPacketData()
 					if err == nil {
-						if l.TimestampType == "go" {
+						if l.config.TimestampType == "go" {
 							ci.Timestamp = time.Now()
 						}
 
@@ -483,6 +494,18 @@ func (l *Listener) activatePcap() error {
 	return nil
 }
 
+func (l *Listener) activateVxLanSocket() error {
+	handler, err := newVXLANHandler(l.config.VXLANPort, l.config.VXLANVNIs)
+	if err != nil {
+		return err
+	}
+	l.Handles["vxlan"] = packetHandle{
+		handler: handler,
+	}
+
+	return nil
+}
+
 func (l *Listener) activateRawSocket() error {
 	if runtime.GOOS != "linux" {
 		return fmt.Errorf("sock_raw is not stabilized on OS other than linux")
@@ -516,15 +539,15 @@ func (l *Listener) activatePcapFile() (err error) {
 
 	tmp := l.host
 	l.host = ""
-	l.BPFFilter = l.Filter(pcap.Interface{})
+	l.config.BPFFilter = l.Filter(pcap.Interface{})
 	l.host = tmp
 
-	if e = handle.SetBPFFilter(l.BPFFilter); e != nil {
+	if e = handle.SetBPFFilter(l.config.BPFFilter); e != nil {
 		handle.Close()
-		return fmt.Errorf("BPF filter error: %q, filter: %s", e, l.BPFFilter)
+		return fmt.Errorf("BPF filter error: %q, filter: %s", e, l.config.BPFFilter)
 	}
 
-	fmt.Println("BPF Filter:", l.BPFFilter)
+	fmt.Println("BPF Filter:", l.config.BPFFilter)
 
 	l.Handles["pcap_file"] = packetHandle{
 		handler: handle,
@@ -547,11 +570,11 @@ func (l *Listener) activateAFPacket() error {
 			continue
 		}
 
-		if l.BPFFilter == "" {
-			l.BPFFilter = l.Filter(ifi)
+		if l.config.BPFFilter == "" {
+			l.config.BPFFilter = l.Filter(ifi)
 		}
-		fmt.Println("Interface:", ifi.Name, ". BPF Filter:", l.BPFFilter)
-		handle.SetBPFFilter(l.BPFFilter, 64<<10)
+		fmt.Println("Interface:", ifi.Name, ". BPF Filter:", l.config.BPFFilter)
+		handle.SetBPFFilter(l.config.BPFFilter, 64<<10)
 
 		l.Handles[ifi.Name] = packetHandle{
 			handler: handle,
@@ -681,10 +704,14 @@ func hostsFilter(direction string, hosts []string) string {
 	return strings.Join(hostsFilters, " or ")
 }
 
-func pcapLinkTypeLength(lType int) (int, bool) {
+func pcapLinkTypeLength(lType int, vlan bool) (int, bool) {
 	switch layers.LinkType(lType) {
 	case layers.LinkTypeEthernet:
-		return 14, true
+		if vlan {
+			return 18, true
+		} else {
+			return 14, true
+		}
 	case layers.LinkTypeNull, layers.LinkTypeLoop:
 		return 4, true
 	case layers.LinkTypeRaw, 12, 14:
