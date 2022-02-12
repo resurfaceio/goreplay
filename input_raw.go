@@ -15,9 +15,7 @@ import (
 )
 
 // RAWInputConfig represents configuration that can be applied on raw input
-type RAWInputConfig struct {
-	capture.PcapOptions
-}
+type RAWInputConfig = capture.PcapOptions
 
 // RAWInput used for intercepting traffic for given address
 type RAWInput struct {
@@ -116,7 +114,7 @@ func (i *RAWInput) PluginRead() (*Message, error) {
 
 func (i *RAWInput) listen(address string) {
 	var err error
-	i.listener, err = capture.NewListener(i.host, i.ports, i.config.PcapOptions)
+	i.listener, err = capture.NewListener(i.host, i.ports, i.config)
 	if err != nil {
 		log.Fatal(err)
 	}

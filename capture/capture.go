@@ -59,6 +59,7 @@ type PcapOptions struct {
 	RealIPHeader    string          `json:"input-raw-realip-header"`
 	Stats           bool            `json:"input-raw-stats"`
 	AllowIncomplete bool            `json:"input-raw-allow-incomplete"`
+	IgnoreInterface []string        `json:"input-raw-ignore-interface"`
 	Transport       string
 }
 
@@ -183,7 +184,49 @@ func NewListener(host string, ports []uint16, config PcapOptions) (l *Listener, 
 // until the context done signal is sent or there is unrecoverable error on all handles.
 // this function must be called after activating pcap handles
 func (l *Listener) Listen(ctx context.Context) (err error) {
-	l.read()
+	l.Lock()
+	for key, handle := range l.Handles {
+		go l.readHandle(key, handle)
+	}
+	l.Unlock()
+
+	go func() {
+		for {
+			time.Sleep(time.Second)
+			var prevInterfaces []string
+			for _, in := range l.Interfaces {
+				prevInterfaces = append(prevInterfaces, in.Name)
+			}
+			l.setInterfaces()
+
+			for _, in := range l.Interfaces {
+				var found bool
+
+				for _, prev := range prevInterfaces {
+					if in.Name == prev {
+						found = true
+					}
+				}
+
+				if !found {
+					fmt.Println("Found new interface:", in.Name)
+					l.Lock()
+					l.Activate()
+
+					for key, handle := range l.Handles {
+						if key == in.Name {
+							fmt.Println("Activating capture on:", in.Name)
+							go l.readHandle(key, handle)
+							break
+						}
+					}
+					l.Unlock()
+				}
+			}
+		}
+	}()
+
+	close(l.Reading)
 	done := ctx.Done()
 	select {
 	case <-done:
@@ -192,6 +235,7 @@ func (l *Listener) Listen(ctx context.Context) (err error) {
 		err = ctx.Err()
 	case <-l.closeDone: // all handles closed voluntarily
 	}
+
 	return
 }
 
@@ -373,85 +417,78 @@ func http1EndHint(m *tcp.Message) bool {
 	return proto.HasFullPayload(m, m.PacketData()...) && (req || res)
 }
 
-func (l *Listener) read() {
-	l.Lock()
-	defer l.Unlock()
-	for key, handle := range l.Handles {
-		go func(key string, hndl packetHandle) {
-			runtime.LockOSThread()
+func (l *Listener) readHandle(key string, hndl packetHandle) {
+	runtime.LockOSThread()
 
-			defer l.closeHandles(key)
-			linkSize := 14
-			linkType := int(layers.LinkTypeEthernet)
-			if _, ok := hndl.handler.(*pcap.Handle); ok {
-				linkType = int(hndl.handler.(*pcap.Handle).LinkType())
-				linkSize, ok = pcapLinkTypeLength(linkType, l.config.VLAN)
-				if !ok {
-					if os.Getenv("GORDEBUG") != "0" {
-						log.Printf("can not identify link type of an interface '%s'\n", key)
-					}
-					return // can't find the linktype size
-				}
+	defer l.closeHandles(key)
+	linkSize := 14
+	linkType := int(layers.LinkTypeEthernet)
+	if _, ok := hndl.handler.(*pcap.Handle); ok {
+		linkType = int(hndl.handler.(*pcap.Handle).LinkType())
+		linkSize, ok = pcapLinkTypeLength(linkType, l.config.VLAN)
+		if !ok {
+			if os.Getenv("GORDEBUG") != "0" {
+				log.Printf("can not identify link type of an interface '%s'\n", key)
 			}
-
-			messageParser := tcp.NewMessageParser(l.messages, l.ports, hndl.ips, l.config.Expire, l.config.AllowIncomplete)
-
-			if l.config.Protocol == tcp.ProtocolHTTP {
-				messageParser.Start = http1StartHint
-				messageParser.End = http1EndHint
-			}
-
-			timer := time.NewTicker(1 * time.Second)
-
-			for {
-				select {
-				case <-l.quit:
-					return
-				case <-timer.C:
-					if h, ok := hndl.handler.(PcapStatProvider); ok {
-						s, err := h.Stats()
-						if err == nil {
-							stats.Add("packets_received", int64(s.PacketsReceived))
-							stats.Add("packets_dropped", int64(s.PacketsDropped))
-							stats.Add("packets_if_dropped", int64(s.PacketsIfDropped))
-						}
-					}
-				default:
-					data, ci, err := hndl.handler.ReadPacketData()
-					if err == nil {
-						if l.config.TimestampType == "go" {
-							ci.Timestamp = time.Now()
-						}
-
-						messageParser.PacketHandler(&tcp.PcapPacket{
-							Data:     data,
-							LType:    linkType,
-							LTypeLen: linkSize,
-							Ci:       &ci,
-						})
-						continue
-					}
-					if enext, ok := err.(pcap.NextError); ok && enext == pcap.NextErrorTimeoutExpired {
-						continue
-					}
-					if eno, ok := err.(syscall.Errno); ok && eno.Temporary() {
-						continue
-					}
-					if enet, ok := err.(*net.OpError); ok && (enet.Temporary() || enet.Timeout()) {
-						continue
-					}
-					if err == io.EOF || err == io.ErrClosedPipe {
-						log.Printf("stopped reading from %s interface with error %s\n", key, err)
-						return
-					}
-
-					log.Printf("stopped reading from %s interface with error %s\n", key, err)
-					return
-				}
-			}
-		}(key, handle)
+			return // can't find the linktype size
+		}
 	}
-	close(l.Reading)
+
+	messageParser := tcp.NewMessageParser(l.messages, l.ports, hndl.ips, l.config.Expire, l.config.AllowIncomplete)
+
+	if l.config.Protocol == tcp.ProtocolHTTP {
+		messageParser.Start = http1StartHint
+		messageParser.End = http1EndHint
+	}
+
+	timer := time.NewTicker(1 * time.Second)
+
+	for {
+		select {
+		case <-l.quit:
+			return
+		case <-timer.C:
+			if h, ok := hndl.handler.(PcapStatProvider); ok {
+				s, err := h.Stats()
+				if err == nil {
+					stats.Add("packets_received", int64(s.PacketsReceived))
+					stats.Add("packets_dropped", int64(s.PacketsDropped))
+					stats.Add("packets_if_dropped", int64(s.PacketsIfDropped))
+				}
+			}
+		default:
+			data, ci, err := hndl.handler.ReadPacketData()
+			if err == nil {
+				if l.config.TimestampType == "go" {
+					ci.Timestamp = time.Now()
+				}
+
+				messageParser.PacketHandler(&tcp.PcapPacket{
+					Data:     data,
+					LType:    linkType,
+					LTypeLen: linkSize,
+					Ci:       &ci,
+				})
+				continue
+			}
+			if enext, ok := err.(pcap.NextError); ok && enext == pcap.NextErrorTimeoutExpired {
+				continue
+			}
+			if eno, ok := err.(syscall.Errno); ok && eno.Temporary() {
+				continue
+			}
+			if enet, ok := err.(*net.OpError); ok && (enet.Temporary() || enet.Timeout()) {
+				continue
+			}
+			if err == io.EOF || err == io.ErrClosedPipe {
+				log.Printf("stopped reading from %s interface with error %s\n", key, err)
+				return
+			}
+
+			log.Printf("stopped reading from %s interface with error %s\n", key, err)
+			return
+		}
+	}
 }
 
 func (l *Listener) Messages() chan *tcp.Message {
@@ -477,6 +514,10 @@ func (l *Listener) activatePcap() error {
 	var e error
 	var msg string
 	for _, ifi := range l.Interfaces {
+		if _, found := l.Handles[ifi.Name]; found {
+			continue
+		}
+
 		var handle *pcap.Handle
 		handle, e = l.PcapHandle(ifi)
 		if e != nil {
@@ -513,6 +554,10 @@ func (l *Listener) activateRawSocket() error {
 	var msg string
 	var e error
 	for _, ifi := range l.Interfaces {
+		if _, found := l.Handles[ifi.Name]; found {
+			continue
+		}
+
 		var handle Socket
 		handle, e = l.SocketHandle(ifi)
 		if e != nil {
@@ -563,6 +608,10 @@ func (l *Listener) activateAFPacket() error {
 
 	var msg string
 	for _, ifi := range l.Interfaces {
+		if _, found := l.Handles[ifi.Name]; found {
+			continue
+		}
+
 		handle, err := newAfpacketHandle(ifi.Name, szFrame, szBlock, numBlocks, false, pcap.BlockForever)
 
 		if err != nil {
@@ -593,11 +642,25 @@ func (l *Listener) setInterfaces() (err error) {
 	var pifis []pcap.Interface
 	pifis, err = pcap.FindAllDevs()
 	ifis, _ := net.Interfaces()
+	l.Interfaces = []pcap.Interface{}
+
 	if err != nil {
 		return
 	}
 
 	for _, pi := range pifis {
+		ignore := false
+		for _, ig := range l.config.IgnoreInterface {
+			if pi.Name == ig {
+				ignore = true
+				break
+			}
+		}
+
+		if ignore {
+			continue
+		}
+
 		if isDevice(l.host, pi) {
 			l.Interfaces = []pcap.Interface{pi}
 			return
@@ -648,6 +711,12 @@ func isDevice(addr string, ifi pcap.Interface) bool {
 
 	if addr == ifi.Name {
 		return true
+	}
+
+	if strings.HasSuffix(addr, "*") {
+		if strings.HasPrefix(ifi.Name, addr[:len(addr)-1]) {
+			return true
+		}
 	}
 
 	for _, _addr := range ifi.Addresses {

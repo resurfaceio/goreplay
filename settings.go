@@ -191,6 +191,7 @@ func init() {
 	flag.BoolVar(&Settings.InputRAWConfig.Monitor, "input-raw-monitor", false, "enable RF monitor mode")
 	flag.BoolVar(&Settings.InputRAWConfig.Stats, "input-raw-stats", false, "enable stats generator on raw TCP messages")
 	flag.BoolVar(&Settings.InputRAWConfig.AllowIncomplete, "input-raw-allow-incomplete", false, "If turned on Gor will record HTTP messages with missing packets")
+	flag.Var(&MultiOption{&Settings.InputRAWConfig.IgnoreInterface}, "input-raw-ignore-interface", "In case if you want listen for all interfaces except a few ones. Can be used in k8s environment. Example: --input-raw-ignore-interface cbr0 --input-raw-ignore-interface eth0 --input-raw-ignore-interface localhost")
 
 	flag.StringVar(&Settings.Middleware, "middleware", "", "Used for modifying traffic using external command")
 
