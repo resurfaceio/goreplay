@@ -22,6 +22,10 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 )
 
 var stats *expvar.Map
@@ -36,6 +40,10 @@ type PacketHandler func(*tcp.Packet)
 
 type PcapStatProvider interface {
 	Stats() (*pcap.Stats, error)
+}
+
+type PcapSetFilter interface {
+	SetBPFFilter(string) error
 }
 
 // PcapOptions options that can be set on a pcap capture handle,
@@ -81,6 +89,7 @@ type Listener struct {
 
 	closeDone chan struct{}
 	quit      chan struct{}
+	closed    bool
 }
 
 type packetHandle struct {
@@ -158,7 +167,11 @@ func NewListener(host string, ports []uint16, config PcapOptions) (l *Listener, 
 	l.Reading = make(chan bool)
 	l.messages = make(chan *tcp.Message, 10000)
 
-	switch l.config.Engine {
+	if strings.HasPrefix(l.host, "k8s://") {
+		l.config.BPFFilter = l.Filter(pcap.Interface{}, k8sIPs(l.host[6:])...)
+	}
+
+	switch config.Engine {
 	default:
 		l.Activate = l.activatePcap
 	case EngineRawSocket:
@@ -193,6 +206,26 @@ func (l *Listener) Listen(ctx context.Context) (err error) {
 	go func() {
 		for {
 			time.Sleep(time.Second)
+
+			if l.closed {
+				return
+			}
+
+			// Check for Pod IP changes
+			if strings.HasPrefix(l.host, "k8s://") {
+				newFilter := l.Filter(pcap.Interface{}, k8sIPs(l.host[6:])...)
+				if newFilter != l.config.BPFFilter {
+					fmt.Println("k8s pods configuration changed, new filter: ", newFilter)
+					for _, h := range l.Handles {
+						if _, ok := h.handler.(PcapSetFilter); ok {
+							h.handler.(PcapSetFilter).SetBPFFilter(newFilter)
+						}
+					}
+
+					l.config.BPFFilter = newFilter
+				}
+			}
+
 			var prevInterfaces []string
 			for _, in := range l.Interfaces {
 				prevInterfaces = append(prevInterfaces, in.Name)
@@ -236,6 +269,7 @@ func (l *Listener) Listen(ctx context.Context) (err error) {
 	case <-l.closeDone: // all handles closed voluntarily
 	}
 
+	l.closed = true
 	return
 }
 
@@ -251,14 +285,84 @@ func (l *Listener) ListenBackground(ctx context.Context) chan error {
 	return err
 }
 
+// Allowed format:
+//   [namespace/]pod/[pod_name]
+//   [namespace/]deployment/[deployment_name]
+//   [namespace/]daemonset/[daemonset_name]
+//   [namespace/]labelSelector/[selector]
+//   [namespace/]fieldSelector/[selector]
+func k8sIPs(addr string) []string {
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		panic(err.Error())
+	}
+
+	// creates the clientset
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	sections := strings.Split(addr, "/")
+
+	if len(sections) < 2 {
+		panic("Not supported k8s scheme. Allowed values: [namespace/]pod/[pod_name], [namespace/]deployment/[deployment_name], [namespace/]daemonset/[daemonset_name], [namespace/]label/[label-name]/[label-value]")
+	}
+
+	// If no namespace passed, assume it is ALL
+	switch sections[0] {
+	case "pod", "deployment", "daemonset", "labelSelector", "fieldSelector":
+		sections = append([]string{""}, sections...)
+	}
+
+	namespace, selectorType, selectorValue := sections[0], sections[1], sections[2]
+
+	labelSelector := ""
+	fieldSelector := ""
+
+	switch selectorType {
+	case "pod":
+		fieldSelector = "metadata.name=" + selectorValue
+	case "deployment":
+		labelSelector = "app=" + selectorValue
+	case "daemonset":
+		labelSelector = "pod-template-generation=1,name=" + selectorValue
+	case "labelSelector":
+		labelSelector = selectorValue
+	case "fieldSelector":
+		fieldSelector = selectorValue
+	}
+
+	pods, err := clientset.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector, FieldSelector: fieldSelector})
+	if err != nil {
+		panic(err.Error())
+	}
+
+	var podIPs []string
+	for _, pod := range pods.Items {
+		for _, podIP := range pod.Status.PodIPs {
+			podIPs = append(podIPs, podIP.IP)
+		}
+	}
+	return podIPs
+}
+
 // Filter returns automatic filter applied by goreplay
 // to a pcap handle of a specific interface
-func (l *Listener) Filter(ifi pcap.Interface) (filter string) {
+func (l *Listener) Filter(ifi pcap.Interface, hosts ...string) (filter string) {
 	// https://www.tcpdump.org/manpages/pcap-filter.7.html
 
-	hosts := []string{l.host}
-	if listenAll(l.host) || isDevice(l.host, ifi) {
-		hosts = interfaceAddresses(ifi)
+	if len(hosts) == 0 {
+		// If k8s have not found any IPs
+		if strings.HasPrefix(l.host, "k8s://") {
+			hosts = []string{}
+		} else {
+			hosts = []string{l.host}
+
+			if listenAll(l.host) || isDevice(l.host, ifi) {
+				hosts = interfaceAddresses(ifi)
+			}
+		}
 	}
 
 	filter = portsFilter(l.config.Transport, "dst", l.ports)
@@ -659,6 +763,12 @@ func (l *Listener) setInterfaces() (err error) {
 
 		if ignore {
 			continue
+		}
+
+		if strings.HasPrefix(l.host, "k8s://") {
+			if !strings.HasPrefix(pi.Name, "veth") {
+				continue
+			}
 		}
 
 		if isDevice(l.host, pi) {
