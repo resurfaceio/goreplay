@@ -100,9 +100,9 @@ type AppSettings struct {
 	OutputHTTP   []string `json:"output-http"`
 	PrettifyHTTP bool     `json:"prettify-http"`
 
-	OutputResurface      MultiOption `json:"output-resurface"`
-	OutputResurfaceRules string      `json:"output-resurface-rules"`
-	OutputResurfaceDebug bool        `json:"output-resurface-debug"`
+	OutputResurface      []string `json:"output-resurface"`
+	OutputResurfaceRules string   `json:"output-resurface-rules"`
+	OutputResurfaceDebug bool     `json:"output-resurface-debug"`
 
 	OutputHTTPConfig HTTPOutputConfig
 
@@ -192,6 +192,9 @@ func init() {
 	flag.DurationVar(&Settings.InputRAWConfig.BufferTimeout, "input-raw-buffer-timeout", 0, "set the pcap timeout. for immediate mode don't set this flag")
 	flag.Var(&Settings.InputRAWConfig.BufferSize, "input-raw-buffer-size", "Controls size of the OS buffer which holds packets until they dispatched. Default value depends by system: in Linux around 2MB. If you see big package drop, increase this value.")
 	flag.BoolVar(&Settings.InputRAWConfig.Promiscuous, "input-raw-promisc", false, "enable promiscuous mode")
+	flag.BoolVar(&Settings.InputRAWConfig.K8sNoMatchNoCapture, "input-raw-k8s-nomatch-nocap", false, "disable port-only capture mode when no matching pods are found in the cluster")
+	flag.Var(&MultiOption{&Settings.InputRAWConfig.K8sSkipSVC}, "input-raw-k8s-skip-svc", "skip k8s these services for discovery. Example: --input-raw-k8s-skip-svc kubernetes")
+	flag.Var(&MultiOption{&Settings.InputRAWConfig.K8sSkipNS}, "input-raw-k8s-skip-ns", "skip k8s these namespaces for discovery. Example: --input-raw-k8s-skip-ns kube-system")
 	flag.BoolVar(&Settings.InputRAWConfig.Monitor, "input-raw-monitor", false, "enable RF monitor mode")
 	flag.BoolVar(&Settings.InputRAWConfig.Stats, "input-raw-stats", false, "enable stats generator on raw TCP messages")
 	flag.BoolVar(&Settings.InputRAWConfig.AllowIncomplete, "input-raw-allow-incomplete", false, "If turned on Gor will record HTTP messages with missing packets")
@@ -201,7 +204,8 @@ func init() {
 
 	flag.Var(&MultiOption{&Settings.OutputHTTP}, "output-http", "Forwards incoming requests to given http address.\n\t# Redirect all incoming requests to staging.com address \n\tgor --input-raw :80 --output-http http://staging.com")
 
-	flag.Var(&Settings.OutputResurface, "output-resurface", "Forwards incoming requests and response data to resurface instance. Example: gor --input-raw :80 --output-resurface http://localhost:7701/message")
+	/* outputResurface */
+	flag.Var(&MultiOption{&Settings.OutputResurface}, "output-resurface", "Forwards incoming requests and response data to resurface instance. Example: gor --input-raw :80 --output-resurface http://localhost:7701/message")
 	flag.StringVar(&Settings.OutputResurfaceRules, "output-resurface-rules", "", "Resurface filtering rules. Example: gor --input-raw :80 --output-resurface http://localhost:7701/message --output-resurface-rules \"include_debug\n\"")
 	flag.BoolVar(&Settings.OutputResurfaceDebug, "output-resurface-debug", false, "Prints out messages before passing them to the resurface logger. Example: gor --input-raw :80 --output-resurface http://localhost:7701/message --output-resurface-debug")
 
