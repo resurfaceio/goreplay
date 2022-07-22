@@ -152,8 +152,8 @@ func (pckt *Packet) parse(data []byte, lType, lTypeLen int, cp *gopacket.Capture
 			totalLen += extLen
 		}
 
-		totalPacketLen := binary.BigEndian.Uint16(ldata[4:6])
-		tcpLen = int(totalPacketLen) - totalLen
+		// Unlike ipv4 this field contains not full packet length, but only payload length
+		tcpLen = int(binary.BigEndian.Uint16(ldata[4:6]))
 
 		netLayer = ldata[:totalLen]
 	} else {
