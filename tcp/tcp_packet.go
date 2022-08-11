@@ -170,7 +170,9 @@ func (pckt *Packet) parse(data []byte, lType, lTypeLen int, cp *gopacket.Capture
 	// When packet is less then 60 bytes, ethernet layer can add trailers to the end of packet
 	// IP layer has total length of the payload, so here we ensure that we operate only on TCP packet layer
 	// https://stackoverflow.com/questions/13738206/ip-packet-has-trailer-on-the-receiver-side-but-not-on-the-sender-side
-	ndata = ndata[:tcpLen]
+	if tcpLen < len(ndata) {
+		ndata = ndata[:tcpLen]
+	}
 
 	// TCP header
 	if len(ndata) < 20 {
