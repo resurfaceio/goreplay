@@ -1,17 +1,16 @@
-package main
+package goreplay
 
 import (
 	"context"
 	"fmt"
+	"github.com/buger/goreplay/internal/capture"
+	"github.com/buger/goreplay/internal/tcp"
+	"github.com/buger/goreplay/proto"
 	"log"
 	"net"
 	"strconv"
 	"strings"
 	"sync"
-
-	"github.com/buger/goreplay/capture"
-	"github.com/buger/goreplay/proto"
-	"github.com/buger/goreplay/tcp"
 )
 
 // RAWInputConfig represents configuration that can be applied on raw input
