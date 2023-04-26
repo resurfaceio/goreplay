@@ -16,9 +16,9 @@ require (
 	github.com/onsi/gomega v1.10.3 // indirect
 	github.com/pierrec/lz4 v2.5.2+incompatible // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20200313005456-10cdbea86bc0 // indirect
-	github.com/resurfaceio/logger-go/v3 v3.0.0
+	github.com/resurfaceio/logger-go/v3 v3.2.1
 	github.com/smartystreets/goconvey v1.6.4 // indirect
-	github.com/stretchr/testify v1.7.0
+	github.com/stretchr/testify v1.8.1
 	golang.org/x/net v0.0.0-20211209124913-491a49abca63
 	golang.org/x/sys v0.0.0-20210831042530-f4d43177bf5e
 	k8s.io/apimachinery v0.23.3
