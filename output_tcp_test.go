@@ -4,9 +4,12 @@ import (
 	"bufio"
 	"log"
 	"net"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestTCPOutput(t *testing.T) {
@@ -15,24 +18,8 @@ func TestTCPOutput(t *testing.T) {
 	listener := startTCP(func(data []byte) {
 		wg.Done()
 	})
-	input := NewTestInput()
 	output := NewTCPOutput(listener.Addr().String(), &TCPOutputConfig{Workers: 10})
-
-	plugins := &InOutPlugins{
-		Inputs:  []PluginReader{input},
-		Outputs: []PluginWriter{output},
-	}
-
-	emitter := NewEmitter()
-	go emitter.Start(plugins, Settings.Middleware)
-
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		input.EmitGET()
-	}
-
-	wg.Wait()
-	emitter.Close()
+	runTCPOutput(wg, output, 10, false)
 }
 
 func startTCP(cb func([]byte)) net.Listener {
@@ -130,4 +117,77 @@ func getTestBytes() *Message {
 		Meta: payloadHeader(RequestPayload, uuid(), time.Now().UnixNano(), -1),
 		Data: []byte("GET / HTTP/1.1\r\nHost: www.w3.org\r\nUser-Agent: Go 1.1 package http\r\nAccept-Encoding: gzip\r\n\r\n"),
 	}
+}
+
+func TestTCPOutputGetInitMessage(t *testing.T) {
+	wg := new(sync.WaitGroup)
+
+	var dataList [][]byte
+	listener := startTCP(func(data []byte) {
+		dataList = append(dataList, data)
+		wg.Done()
+	})
+	getInitMessage := func() *Message {
+		return &Message{
+			Meta: []byte{},
+			Data: []byte("test1"),
+		}
+	}
+	output := NewTCPOutput(listener.Addr().String(), &TCPOutputConfig{Workers: 1, GetInitMessage: getInitMessage})
+
+	runTCPOutput(wg, output, 1, true)
+
+	if assert.Equal(t, 2, len(dataList)) {
+		assert.Equal(t, "test1", string(dataList[0]))
+	}
+}
+
+func TestTCPOutputGetInitMessageAndWriteBeforeMessage(t *testing.T) {
+	wg := new(sync.WaitGroup)
+
+	var dataList [][]byte
+	listener := startTCP(func(data []byte) {
+		dataList = append(dataList, data)
+		wg.Done()
+	})
+	getInitMessage := func() *Message {
+		return &Message{
+			Meta: []byte{},
+			Data: []byte("test2"),
+		}
+	}
+	writeBeforeMessage := func(conn net.Conn, _ *Message) error {
+		_, err := conn.Write([]byte("before"))
+		return err
+	}
+	output := NewTCPOutput(listener.Addr().String(), &TCPOutputConfig{Workers: 1, GetInitMessage: getInitMessage, WriteBeforeMessage: writeBeforeMessage})
+
+	runTCPOutput(wg, output, 1, true)
+
+	if assert.Equal(t, 2, len(dataList)) {
+		assert.Equal(t, "beforetest2", string(dataList[0]))
+		assert.True(t, strings.HasPrefix(string(dataList[1]), "before"))
+	}
+}
+
+func runTCPOutput(wg *sync.WaitGroup, output PluginWriter, repeat int, initMessage bool) {
+	input := NewTestInput()
+	plugins := &InOutPlugins{
+		Inputs:  []PluginReader{input},
+		Outputs: []PluginWriter{output},
+	}
+
+	emitter := NewEmitter()
+	go emitter.Start(plugins, Settings.Middleware)
+
+	if initMessage {
+		wg.Add(1)
+	}
+	for i := 0; i < repeat; i++ {
+		wg.Add(1)
+		input.EmitGET()
+	}
+
+	wg.Wait()
+	emitter.Close()
 }
