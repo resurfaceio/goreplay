@@ -147,7 +147,7 @@ func NewPlugins() *InOutPlugins {
 	}
 
 	for _, options := range Settings.OutputResurface {
-		plugins.registerPlugin(NewResurfaceOutput, options, Settings.OutputResurfaceRules, Settings.OutputResurfaceDebug)
+		plugins.registerPlugin(NewResurfaceOutput, options, Settings.OutputResurfaceRules)
 	}
 
 	for _, options := range Settings.OutputBinary {

@@ -102,7 +102,6 @@ type AppSettings struct {
 
 	OutputResurface      []string `json:"output-resurface"`
 	OutputResurfaceRules string   `json:"output-resurface-rules"`
-	OutputResurfaceDebug bool     `json:"output-resurface-debug"`
 
 	OutputHTTPConfig HTTPOutputConfig
 
@@ -207,7 +206,6 @@ func init() {
 	/* outputResurface */
 	flag.Var(&MultiOption{&Settings.OutputResurface}, "output-resurface", "Forwards incoming requests and response data to resurface instance. Example: gor --input-raw :80 --output-resurface http://localhost:7701/message")
 	flag.StringVar(&Settings.OutputResurfaceRules, "output-resurface-rules", "", "Resurface filtering rules. Example: gor --input-raw :80 --output-resurface http://localhost:7701/message --output-resurface-rules \"include_debug\n\"")
-	flag.BoolVar(&Settings.OutputResurfaceDebug, "output-resurface-debug", false, "Prints out messages before passing them to the resurface logger. Example: gor --input-raw :80 --output-resurface http://localhost:7701/message --output-resurface-debug")
 
 	/* outputHTTPConfig */
 	flag.Var(&Settings.OutputHTTPConfig.BufferSize, "output-http-response-buffer", "HTTP response buffer size, all data after this size will be discarded.")
