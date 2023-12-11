@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"sync"
 	"time"
 
 	"log"
@@ -31,8 +30,9 @@ type ResurfaceOutput struct {
 	config  *ResurfaceConfig
 	rlogger *resurface_logger.HttpLogger
 
-	messages     map[string]*HTTPMessage
-	messageMutex sync.Mutex
+	messagesChan     chan *Message
+	fullMessagesChan chan *HTTPMessage
+	messageCounter   [3]int
 }
 
 // Initializes Resurface logger
@@ -42,7 +42,7 @@ func NewResurfaceOutput(address string, rules string) PluginWriter {
 
 	// Set capture URL and logging rules
 	o.config = &ResurfaceConfig{
-		bufferSize: 128,
+		bufferSize: 10000,
 	}
 	o.config.options = resurface_logger.Options{
 		Url:   address,
@@ -64,141 +64,151 @@ func NewResurfaceOutput(address string, rules string) PluginWriter {
 	}
 
 	// Keep track of both requests and responses for matching
-	o.messages = make(map[string]*HTTPMessage, o.config.bufferSize)
+	//o.messages = make(map[string]*HTTPMessage, o.config.bufferSize)
 
 	// Manually remove orphaned requests/responses
-	go o.collectStrays()
+	//go o.collectStrays()
+
+	o.messagesChan = make(chan *Message, o.config.bufferSize*2)
+	o.fullMessagesChan = make(chan *HTTPMessage, o.config.bufferSize)
+	o.messageCounter = [3]int{0, 0, 0}
+
+	go o.sendRequest()
+	go o.worker()
 
 	return o
 }
 
-// Writes HTTP requests and responses to o.messages
-func (o *ResurfaceOutput) PluginWrite(msg *Message) (n int, err error) {
-	o.messageMutex.Lock()
-	defer o.messageMutex.Unlock()
+func (o *ResurfaceOutput) worker() {
+	straysTicker := time.NewTicker(time.Second * 10)
+	messages := make(map[string]*HTTPMessage, o.config.bufferSize)
+	for {
+		select {
+		case msg := <-o.messagesChan:
+			o.messageCounter[0]++
+			metaSlice := payloadMeta(msg.Meta)
+			// UUID shared by a given request and its corresponding response
+			messageID := byteutils.SliceToString(metaSlice[1])
 
-	n = len(msg.Data) + len(msg.Meta)
+			message, messageFound := messages[messageID]
+			if !messageFound {
+				// Message timestamp
+				messageTimestamp := byteutils.SliceToString(metaSlice[2])
 
-	if isOriginPayload(msg.Meta) {
-		metaSlice := payloadMeta(msg.Meta)
-		// UUID shared by a given request and its corresponding response
-		messageID := byteutils.SliceToString(metaSlice[1])
-		// Message timestamp
-		messageTS := byteutils.SliceToString(metaSlice[2])
+				message = &HTTPMessage{}
+				messages[messageID] = message
 
-		message, messageFound := o.messages[messageID]
-		if !messageFound {
-			message = &HTTPMessage{}
-			o.messages[messageID] = message
+				messageTime, err := strconv.ParseInt(messageTimestamp, 10, 64)
+				if err == nil {
+					message.initTime = time.Unix(0, messageTime)
+				} else {
+					message.initTime = time.Now()
+					Debug(2, "[OUTPUT][RESURFACE]", "Error parsing message timestamp", err.Error())
+				}
+			}
 
-			messageTime, err := strconv.ParseInt(messageTS, 10, 64)
-			if err == nil {
-				message.initTime = time.Unix(0, messageTime)
+			reqFound := message.request != nil
+			if !reqFound && isRequestPayload(msg.Meta) {
+				message.request = msg
+				reqFound = true
+			}
+
+			respFound := message.response != nil
+			if !respFound && !isRequestPayload(msg.Meta) {
+				message.response = msg
+				respFound = true
+			}
+
+			if reqFound && respFound {
+				o.fullMessagesChan <- message
+				delete(messages, messageID)
+			}
+
+		case <-straysTicker.C:
+			if n := len(messages); n > 0 {
+				Debug(3, "[OUTPUT][RESURFACE][STRAY-COLLECTOR]", "Number of messages in queue:", n)
+				for id, message := range messages {
+					Debug(4, "[OUTPUT][RESURFACE][STRAY-COLLECTOR]", "Checking message:", id)
+					hasRequest := message.request != nil
+					hasResponse := message.response != nil
+					if ((hasRequest && !hasResponse) || (!hasRequest && hasResponse)) && time.Since(message.initTime) >= time.Second*10 {
+						Debug(3, "[OUTPUT][RESURFACE][STRAY-COLLECTOR]", "STRAY MESSAGE:", id)
+						if Settings.Verbose > 3 {
+							if hasRequest {
+								Debug(4, "[OUTPUT][RESURFACE][STRAY-COLLECTOR]", "REQUEST:", byteutils.SliceToString(message.request.Meta))
+								Debug(5, "[OUTPUT][RESURFACE][STRAY-COLLECTOR]", "REQUEST:\n", byteutils.SliceToString(message.request.Data))
+							}
+							if hasResponse {
+								Debug(4, "[OUTPUT][RESURFACE][STRAY-COLLECTOR]", "RESPONSE:", byteutils.SliceToString(message.response.Meta))
+								Debug(5, "[OUTPUT][RESURFACE][STRAY-COLLECTOR]", "RESPONSE:\n", byteutils.SliceToString(message.response.Data))
+							}
+						}
+
+						delete(messages, id)
+						o.messageCounter[2]++
+						Debug(3, "[OUTPUT][RESURFACE][STRAY-COLLECTOR]", "MESSAGE", id, "DELETED")
+					}
+				}
 			} else {
-				message.initTime = time.Now()
-				Debug(2, "[OUTPUT][RESURFACE]", "Error parsing message timestamp", err.Error())
+				if o.messageCounter[0] != 0 {
+					Debug(1, "[OUTPUT][RESURFACE]", "messages received:", o.messageCounter[0], ", full messages sent:", o.messageCounter[1], ", deleted messages:", o.messageCounter[2])
+					if o.messageCounter[0]-o.messageCounter[1]*2-o.messageCounter[2] == 0 {
+						Debug(1, "[OUTPUT][RESURFACE]", "all good")
+					}
+					o.messageCounter = [3]int{0, 0, 0}
+				}
 			}
 		}
+	}
+}
 
-		reqFound := message.request != nil
-		if !reqFound && isRequestPayload(msg.Meta) {
-			message.request = msg
-			reqFound = true
-		}
-
-		respFound := message.response != nil
-		if !respFound && !isRequestPayload(msg.Meta) {
-			message.response = msg
-			respFound = true
-		}
-
-		if !(reqFound && respFound) {
-			return
-		}
-
-		err = o.sendRequest(messageID)
-		if err != nil {
-			Debug(2, "[OUTPUT][RESURFACE]", err.Error())
-		}
-
+func (o *ResurfaceOutput) PluginWrite(msg *Message) (n int, err error) {
+	n = len(msg.Data) + len(msg.Meta)
+	if isOriginPayload(msg.Meta) {
+		o.messagesChan <- msg
 	} else {
 		Debug(2, "[OUTPUT][RESURFACE]", "Message is not request or response")
 	}
-
 	return
 }
 
 // Submits HTTP message to Resurface using logger-go
-func (o *ResurfaceOutput) sendRequest(id string) error {
-	message := o.messages[id]
-	defer delete(o.messages, id)
-
-	req, reqErr := http.ReadRequest(bufio.NewReader(bytes.NewReader(message.request.Data)))
-	if reqErr != nil {
-		return reqErr
-	}
-
-	resp, respErr := http.ReadResponse(bufio.NewReader(bytes.NewReader(message.response.Data)), req)
-	if respErr != nil {
-		return respErr
-	}
-
-	reqMeta := payloadMeta(message.request.Meta)
-	respMeta := payloadMeta(message.response.Meta)
-
-	Debug(4, "[OUTPUT][RESURFACE]", "Processing Message:", id)
-	if Settings.Verbose > 4 {
-		Debug(5, "[OUTPUT][RESURFACE]", "Processing Request:", byteutils.SliceToString(reqMeta[1]))
-		Debug(6, "[OUTPUT][RESURFACE]", byteutils.SliceToString(message.request.Data))
-		Debug(5, "[OUTPUT][RESURFACE]", "Processing Response:", byteutils.SliceToString(respMeta[1]))
-		Debug(6, "[OUTPUT][RESURFACE]", byteutils.SliceToString(message.response.Data))
-	}
-
-	reqTimestamp, _ := strconv.ParseInt(byteutils.SliceToString(reqMeta[2]), 10, 64)
-	respTimestamp, _ := strconv.ParseInt(byteutils.SliceToString(respMeta[2]), 10, 64)
-
-	interval := (respTimestamp - reqTimestamp) / 1000000
-	if interval < 0 {
-		interval = 0
-	}
-
-	resurface_logger.SendHttpMessage(o.rlogger, resp, req, respTimestamp/1000000, interval, nil)
-
-	return nil
-}
-
-// Collect orphaned messages: requests without responses and viceversa
-func (o *ResurfaceOutput) collectStrays() {
+func (o *ResurfaceOutput) sendRequest() {
 	for {
-		o.messageMutex.Lock()
-		n := len(o.messages)
-		if n > 0 {
-			Debug(3, "[OUTPUT][RESURFACE][STRAY-COLLECTOR]", "Number of messages in queue:", n)
-			for id, message := range o.messages {
-				Debug(4, "[OUTPUT][RESURFACE][STRAY-COLLECTOR]", "Checking message:", id)
-				hasRequest := message.request != nil
-				hasResponse := message.response != nil
-				if ((hasRequest && !hasResponse) || (!hasRequest && hasResponse)) && time.Since(message.initTime) >= time.Minute {
-					Debug(3, "[OUTPUT][RESURFACE][STRAY-COLLECTOR]", "STRAY MESSAGE:", id)
-					if Settings.Verbose > 3 {
-						if hasRequest {
-							Debug(4, "[OUTPUT][RESURFACE][STRAY-COLLECTOR]", "REQUEST:", byteutils.SliceToString(message.request.Meta))
-							Debug(5, "[OUTPUT][RESURFACE][STRAY-COLLECTOR]", "REQUEST:\n", byteutils.SliceToString(message.request.Data))
-						}
-						if hasResponse {
-							Debug(4, "[OUTPUT][RESURFACE][STRAY-COLLECTOR]", "RESPONSE:", byteutils.SliceToString(message.response.Meta))
-							Debug(5, "[OUTPUT][RESURFACE][STRAY-COLLECTOR]", "RESPONSE:\n", byteutils.SliceToString(message.response.Data))
-						}
-					}
-
-					delete(o.messages, id)
-
-					Debug(3, "[OUTPUT][RESURFACE][STRAY-COLLECTOR]", "MESSAGE", id, "DELETED")
-				}
+		select {
+		case message := <-o.fullMessagesChan:
+			o.messageCounter[1]++
+			req, reqErr := http.ReadRequest(bufio.NewReader(bytes.NewReader(message.request.Data)))
+			if reqErr != nil {
+				continue
 			}
+
+			resp, respErr := http.ReadResponse(bufio.NewReader(bytes.NewReader(message.response.Data)), req)
+			if respErr != nil {
+				continue
+			}
+
+			reqMeta := payloadMeta(message.request.Meta)
+			respMeta := payloadMeta(message.response.Meta)
+
+			//Debug(4, "[OUTPUT][RESURFACE]", "Processing Message:", id)
+			if Settings.Verbose > 4 {
+				Debug(5, "[OUTPUT][RESURFACE]", "Processing Request:", byteutils.SliceToString(reqMeta[1]))
+				Debug(6, "[OUTPUT][RESURFACE]", byteutils.SliceToString(message.request.Data))
+				Debug(5, "[OUTPUT][RESURFACE]", "Processing Response:", byteutils.SliceToString(respMeta[1]))
+				Debug(6, "[OUTPUT][RESURFACE]", byteutils.SliceToString(message.response.Data))
+			}
+
+			reqTimestamp, _ := strconv.ParseInt(byteutils.SliceToString(reqMeta[2]), 10, 64)
+			respTimestamp, _ := strconv.ParseInt(byteutils.SliceToString(respMeta[2]), 10, 64)
+
+			interval := (respTimestamp - reqTimestamp) / 1000000
+			if interval < 0 {
+				interval = 0
+			}
+
+			resurface_logger.SendHttpMessage(o.rlogger, resp, req, respTimestamp/1000000, interval, nil)
 		}
-		o.messageMutex.Unlock()
-		time.Sleep(time.Minute / 6)
 	}
 }
 
@@ -208,5 +218,6 @@ func (o *ResurfaceOutput) String() string {
 
 // Closes the data channel
 func (o *ResurfaceOutput) Close() error {
+	Debug(1, "[OUTPUT][RESURFACE]", "messages received:", o.messageCounter[0], ", full messages sent:", o.messageCounter[1], ", deleted messages:", o.messageCounter[2])
 	return nil
 }
