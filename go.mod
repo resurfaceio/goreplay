@@ -19,8 +19,9 @@ require (
 	github.com/resurfaceio/logger-go/v3 v3.3.1
 	github.com/smartystreets/goconvey v1.6.4 // indirect
 	github.com/stretchr/testify v1.8.1
-	golang.org/x/net v0.0.0-20211209124913-491a49abca63
-	golang.org/x/sys v0.0.0-20210831042530-f4d43177bf5e
+	github.com/xdg-go/scram v1.1.2
+	golang.org/x/net v0.0.0-20220722155237-a158d28d115b
+	golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f
 	k8s.io/apimachinery v0.23.3
 	k8s.io/client-go v0.23.3
 )
