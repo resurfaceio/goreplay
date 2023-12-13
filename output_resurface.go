@@ -12,7 +12,7 @@ import (
 
 	"github.com/buger/goreplay/byteutils"
 
-	resurface_logger "github.com/resurfaceio/logger-go/v3"
+	resurfaceLogger "github.com/resurfaceio/logger-go/v3"
 )
 
 type HTTPMessage struct {
@@ -22,69 +22,83 @@ type HTTPMessage struct {
 }
 
 type ResurfaceConfig struct {
-	options    resurface_logger.Options
+	options    resurfaceLogger.Options
 	bufferSize int
 }
 
 type ResurfaceOutput struct {
 	config  *ResurfaceConfig
-	rlogger *resurface_logger.HttpLogger
+	rLogger *resurfaceLogger.HttpLogger
 
-	messagesChan     chan *Message
-	fullMessagesChan chan *HTTPMessage
-	messageCounter   [3]int
+	messages       chan *Message
+	httpMessages   chan *HTTPMessage
+	messageCounter [3]int
 }
 
-// Initializes Resurface logger
+const logPrefix = "[OUTPUT][RESURFACE]"
+
+// NewResurfaceOutput Initializes Resurface logger
 func NewResurfaceOutput(address string, rules string) PluginWriter {
 	o := new(ResurfaceOutput)
 	var err error
 
+	u, _ := resurfaceLogger.GetUsageLoggers()
 	// Set capture URL and logging rules
 	o.config = &ResurfaceConfig{
-		bufferSize: 10000,
+		bufferSize: u.ConfigByDefault()["MESSAGE_QUEUE_SIZE"],
 	}
-	o.config.options = resurface_logger.Options{
+	o.config.options = resurfaceLogger.Options{
 		Url:   address,
 		Rules: rules,
 	}
 
 	// Initialize logger
-	o.rlogger, err = resurface_logger.NewHttpLogger(o.config.options)
+	o.rLogger, err = resurfaceLogger.NewHttpLogger(o.config.options)
 	if err != nil {
-		log.Fatalf("[OUTPUT][RESURFACE] Resurface options error[%q]", err)
+		log.Printf("%s Resurface options error[%q]\n", logPrefix, err)
+		return nil
 	}
-	if o.rlogger.Enabled() {
-		Debug(1, "[OUTPUT][RESURFACE]", "Resurface logger enabled")
+	if o.rLogger.Enabled() {
+		Debug(1, logPrefix, "Resurface logger enabled")
 	} else {
-		Debug(1, "[OUTPUT][RESURFACE]", "Resurface logger disabled")
+		Debug(1, logPrefix, "Resurface logger disabled")
 		if _, err = url.ParseRequestURI(o.config.options.Url); err != nil {
-			log.Fatalf("[OUTPUT][RESURFACE] Error parsing HTTP(S) output URL[%q]", err)
+			log.Printf("%s Error parsing HTTP(S) output URL[%q]\n", logPrefix, err)
+			return nil
 		}
 	}
 
-	// Keep track of both requests and responses for matching
-	//o.messages = make(map[string]*HTTPMessage, o.config.bufferSize)
+	// Build and send captured messages concurrently
+	o.messages = make(chan *Message, o.config.bufferSize*2)
+	o.httpMessages = make(chan *HTTPMessage, o.config.bufferSize)
 
-	// Manually remove orphaned requests/responses
-	//go o.collectStrays()
+	go o.sendMessages()
+	go o.buildMessages()
 
-	o.messagesChan = make(chan *Message, o.config.bufferSize*2)
-	o.fullMessagesChan = make(chan *HTTPMessage, o.config.bufferSize)
 	o.messageCounter = [3]int{0, 0, 0}
-
-	go o.sendRequest()
-	go o.worker()
-
 	return o
 }
 
-func (o *ResurfaceOutput) worker() {
-	straysTicker := time.NewTicker(time.Second * 10)
+// PluginWrite Writes captured message to output
+func (o *ResurfaceOutput) PluginWrite(msg *Message) (n int, err error) {
+	n = len(msg.Data) + len(msg.Meta)
+	if isOriginPayload(msg.Meta) {
+		o.messages <- msg
+	} else {
+		Debug(2, logPrefix, "Message is not request or response")
+	}
+	return
+}
+
+// buildMessages Matches captured HTTP requests with responses
+func (o *ResurfaceOutput) buildMessages() {
+	// Keep track of both requests and responses for matching
 	messages := make(map[string]*HTTPMessage, o.config.bufferSize)
+	// Manually check and remove orphaned requests/responses every 10 s
+	straysTicker := time.NewTicker(time.Second * 10)
 	for {
 		select {
-		case msg := <-o.messagesChan:
+		case msg := <-o.messages:
 			o.messageCounter[0]++
 			metaSlice := payloadMeta(msg.Meta)
 			// UUID shared by a given request and its corresponding response
@@ -103,7 +117,7 @@ func (o *ResurfaceOutput) worker() {
 					message.initTime = time.Unix(0, messageTime)
 				} else {
 					message.initTime = time.Now()
-					Debug(2, "[OUTPUT][RESURFACE]", "Error parsing message timestamp", err.Error())
+					Debug(2, logPrefix, "Error parsing message timestamp", err.Error())
 				}
 			}
 
@@ -120,64 +134,52 @@ func (o *ResurfaceOutput) worker() {
 			}
 
 			if reqFound && respFound {
-				o.fullMessagesChan <- message
+				o.httpMessages <- message
+				o.messageCounter[1]++
 				delete(messages, messageID)
 			}
 
 		case <-straysTicker.C:
 			if n := len(messages); n > 0 {
-				Debug(3, "[OUTPUT][RESURFACE][STRAY-COLLECTOR]", "Number of messages in queue:", n)
+				Debug(3, logPrefix, "Number of messages in queue:", n)
 				for id, message := range messages {
-					Debug(4, "[OUTPUT][RESURFACE][STRAY-COLLECTOR]", "Checking message:", id)
+					Debug(4, logPrefix, "Checking message:", id)
 					hasRequest := message.request != nil
 					hasResponse := message.response != nil
-					if ((hasRequest && !hasResponse) || (!hasRequest && hasResponse)) && time.Since(message.initTime) >= time.Second*10 {
-						Debug(3, "[OUTPUT][RESURFACE][STRAY-COLLECTOR]", "STRAY MESSAGE:", id)
+					if ((hasRequest && !hasResponse) || (!hasRequest && hasResponse)) &&
+						time.Since(message.initTime) >= time.Minute*2 {
+
+						Debug(3, logPrefix, "STRAY MESSAGE:", id)
 						if Settings.Verbose > 3 {
 							if hasRequest {
-								Debug(4, "[OUTPUT][RESURFACE][STRAY-COLLECTOR]", "REQUEST:", byteutils.SliceToString(message.request.Meta))
-								Debug(5, "[OUTPUT][RESURFACE][STRAY-COLLECTOR]", "REQUEST:\n", byteutils.SliceToString(message.request.Data))
+								Debug(4, logPrefix, "REQUEST:", byteutils.SliceToString(message.request.Meta))
+								Debug(5, logPrefix, "REQUEST:\n", byteutils.SliceToString(message.request.Data))
 							}
 							if hasResponse {
-								Debug(4, "[OUTPUT][RESURFACE][STRAY-COLLECTOR]", "RESPONSE:", byteutils.SliceToString(message.response.Meta))
-								Debug(5, "[OUTPUT][RESURFACE][STRAY-COLLECTOR]", "RESPONSE:\n", byteutils.SliceToString(message.response.Data))
+								Debug(4, logPrefix, "RESPONSE:", byteutils.SliceToString(message.response.Meta))
+								Debug(5, logPrefix, "RESPONSE:\n", byteutils.SliceToString(message.response.Data))
 							}
 						}
 
 						delete(messages, id)
+						Debug(3, logPrefix, "MESSAGE", id, "DELETED")
 						o.messageCounter[2]++
-						Debug(3, "[OUTPUT][RESURFACE][STRAY-COLLECTOR]", "MESSAGE", id, "DELETED")
 					}
 				}
-			} else {
-				if o.messageCounter[0] != 0 {
-					Debug(1, "[OUTPUT][RESURFACE]", "messages received:", o.messageCounter[0], ", full messages sent:", o.messageCounter[1], ", deleted messages:", o.messageCounter[2])
-					if o.messageCounter[0]-o.messageCounter[1]*2-o.messageCounter[2] == 0 {
-						Debug(1, "[OUTPUT][RESURFACE]", "all good")
-					}
-					o.messageCounter = [3]int{0, 0, 0}
-				}
+			} else if o.messageCounter[0]+o.messageCounter[1]+o.messageCounter[2] != 0 {
+				Debug(1, logPrefix, "messages received:", o.messageCounter[0],
+					", full messages sent:", o.messageCounter[1], ", orphans deleted:", o.messageCounter[2])
+				o.messageCounter = [3]int{0, 0, 0}
 			}
 		}
 	}
 }
 
-func (o *ResurfaceOutput) PluginWrite(msg *Message) (n int, err error) {
-	n = len(msg.Data) + len(msg.Meta)
-	if isOriginPayload(msg.Meta) {
-		o.messagesChan <- msg
-	} else {
-		Debug(2, "[OUTPUT][RESURFACE]", "Message is not request or response")
-	}
-	return
-}
-
-// Submits HTTP message to Resurface using logger-go
-func (o *ResurfaceOutput) sendRequest() {
+// sendMessages Submits HTTP message to Resurface using logger-go
+func (o *ResurfaceOutput) sendMessages() {
 	for {
 		select {
-		case message := <-o.fullMessagesChan:
-			o.messageCounter[1]++
+		case message := <-o.httpMessages:
 			req, reqErr := http.ReadRequest(bufio.NewReader(bytes.NewReader(message.request.Data)))
 			if reqErr != nil {
 				continue
@@ -193,10 +195,10 @@ func (o *ResurfaceOutput) sendRequest() {
 
 			//Debug(4, "[OUTPUT][RESURFACE]", "Processing Message:", id)
 			if Settings.Verbose > 4 {
-				Debug(5, "[OUTPUT][RESURFACE]", "Processing Request:", byteutils.SliceToString(reqMeta[1]))
-				Debug(6, "[OUTPUT][RESURFACE]", byteutils.SliceToString(message.request.Data))
-				Debug(5, "[OUTPUT][RESURFACE]", "Processing Response:", byteutils.SliceToString(respMeta[1]))
-				Debug(6, "[OUTPUT][RESURFACE]", byteutils.SliceToString(message.response.Data))
+				Debug(5, logPrefix, "Processing Request:", byteutils.SliceToString(reqMeta[1]))
+				Debug(6, logPrefix, byteutils.SliceToString(message.request.Data))
+				Debug(5, logPrefix, "Processing Response:", byteutils.SliceToString(respMeta[1]))
+				Debug(6, logPrefix, byteutils.SliceToString(message.response.Data))
 			}
 
 			reqTimestamp, _ := strconv.ParseInt(byteutils.SliceToString(reqMeta[2]), 10, 64)
@@ -207,17 +209,21 @@ func (o *ResurfaceOutput) sendRequest() {
 				interval = 0
 			}
 
-			resurface_logger.SendHttpMessage(o.rlogger, resp, req, respTimestamp/1000000, interval, nil)
+			resurfaceLogger.SendHttpMessage(o.rLogger, resp, req, respTimestamp/1000000, interval, nil)
 		}
 	}
 }
 
+// String Returns the configured capture URL
 func (o *ResurfaceOutput) String() string {
 	return "Resurface output: " + o.config.options.Url
 }
 
-// Closes the data channel
+// Close Closes the data channel
 func (o *ResurfaceOutput) Close() error {
-	Debug(1, "[OUTPUT][RESURFACE]", "messages received:", o.messageCounter[0], ", full messages sent:", o.messageCounter[1], ", deleted messages:", o.messageCounter[2])
+
+	Debug(1, logPrefix,
+		"messages received:", o.messageCounter[0], ", full messages sent:", o.messageCounter[1],
+		", orphans deleted:", o.messageCounter[2])
 	return nil
 }
