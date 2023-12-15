@@ -30,9 +30,8 @@ type ResurfaceOutput struct {
 	config  *ResurfaceConfig
 	rLogger *resurfaceLogger.HttpLogger
 
-	messages       chan *Message
-	httpMessages   chan *HTTPMessage
-	messageCounter [3]int
+	messages     chan *Message
+	httpMessages chan *HTTPMessage
 }
 
 const logPrefix = "[OUTPUT][RESURFACE]"
@@ -60,6 +59,7 @@ func NewResurfaceOutput(address string, rules string) PluginWriter {
 	}
 	if o.rLogger.Enabled() {
 		Debug(1, logPrefix, "Resurface logger enabled")
+		Debug(1, logPrefix, o.String())
 	} else {
 		Debug(1, logPrefix, "Resurface logger disabled")
 		if _, err = url.ParseRequestURI(o.config.options.Url); err != nil {
@@ -75,7 +75,6 @@ func NewResurfaceOutput(address string, rules string) PluginWriter {
 	go o.sendMessages()
 	go o.buildMessages()
 
-	o.messageCounter = [3]int{0, 0, 0}
 	return o
 }
 
@@ -96,10 +95,12 @@ func (o *ResurfaceOutput) buildMessages() {
 	messages := make(map[string]*HTTPMessage, o.config.bufferSize)
 	// Manually check and remove orphaned requests/responses every 10 s
 	straysTicker := time.NewTicker(time.Second * 10)
+	// (Debug) Count messages received/sent
+	messageCounter := [3]int{0, 0, 0}
 	for {
 		select {
 		case msg := <-o.messages:
-			o.messageCounter[0]++
+			messageCounter[0]++
 			metaSlice := payloadMeta(msg.Meta)
 			// UUID shared by a given request and its corresponding response
 			messageID := byteutils.SliceToString(metaSlice[1])
@@ -135,7 +136,7 @@ func (o *ResurfaceOutput) buildMessages() {
 
 			if reqFound && respFound {
 				o.httpMessages <- message
-				o.messageCounter[1]++
+				messageCounter[1]++
 				delete(messages, messageID)
 			}
 
@@ -163,13 +164,14 @@ func (o *ResurfaceOutput) buildMessages() {
 
 						delete(messages, id)
 						Debug(3, logPrefix, "MESSAGE", id, "DELETED")
-						o.messageCounter[2]++
+						messageCounter[2]++
 					}
 				}
-			} else if o.messageCounter[0]+o.messageCounter[1]+o.messageCounter[2] != 0 {
-				Debug(1, logPrefix, "messages received:", o.messageCounter[0],
-					", full messages sent:", o.messageCounter[1], ", orphans deleted:", o.messageCounter[2])
-				o.messageCounter = [3]int{0, 0, 0}
+			}
+			if messageCounter[0]+messageCounter[1]+messageCounter[2] != 0 {
+				Debug(1, logPrefix, "messages received:", messageCounter[0],
+					", full messages sent:", messageCounter[1], ", orphans deleted:", messageCounter[2])
+				messageCounter = [3]int{0, 0, 0}
 			}
 		}
 	}
@@ -177,53 +179,55 @@ func (o *ResurfaceOutput) buildMessages() {
 
 // sendMessages Submits HTTP message to Resurface using logger-go
 func (o *ResurfaceOutput) sendMessages() {
-	for {
-		select {
-		case message := <-o.httpMessages:
-			req, reqErr := http.ReadRequest(bufio.NewReader(bytes.NewReader(message.request.Data)))
-			if reqErr != nil {
-				continue
-			}
-
-			resp, respErr := http.ReadResponse(bufio.NewReader(bytes.NewReader(message.response.Data)), req)
-			if respErr != nil {
-				continue
-			}
-
-			reqMeta := payloadMeta(message.request.Meta)
-			respMeta := payloadMeta(message.response.Meta)
-
-			//Debug(4, "[OUTPUT][RESURFACE]", "Processing Message:", id)
-			if Settings.Verbose > 4 {
-				Debug(5, logPrefix, "Processing Request:", byteutils.SliceToString(reqMeta[1]))
-				Debug(6, logPrefix, byteutils.SliceToString(message.request.Data))
-				Debug(5, logPrefix, "Processing Response:", byteutils.SliceToString(respMeta[1]))
-				Debug(6, logPrefix, byteutils.SliceToString(message.response.Data))
-			}
-
-			reqTimestamp, _ := strconv.ParseInt(byteutils.SliceToString(reqMeta[2]), 10, 64)
-			respTimestamp, _ := strconv.ParseInt(byteutils.SliceToString(respMeta[2]), 10, 64)
-
-			interval := (respTimestamp - reqTimestamp) / 1000000
-			if interval < 0 {
-				interval = 0
-			}
-
-			resurfaceLogger.SendHttpMessage(o.rLogger, resp, req, respTimestamp/1000000, interval, nil)
+	for message := range o.httpMessages {
+		req, reqErr := http.ReadRequest(bufio.NewReader(bytes.NewReader(message.request.Data)))
+		if reqErr != nil {
+			continue
 		}
+
+		resp, respErr := http.ReadResponse(bufio.NewReader(bytes.NewReader(message.response.Data)), req)
+		if respErr != nil {
+			continue
+		}
+
+		reqMeta := payloadMeta(message.request.Meta)
+		respMeta := payloadMeta(message.response.Meta)
+
+		//Debug(4, "[OUTPUT][RESURFACE]", "Processing Message:", id)
+		if Settings.Verbose > 4 {
+			Debug(5, logPrefix, "Processing Request:", byteutils.SliceToString(reqMeta[1]))
+			Debug(6, logPrefix, byteutils.SliceToString(message.request.Data))
+			Debug(5, logPrefix, "Processing Response:", byteutils.SliceToString(respMeta[1]))
+			Debug(6, logPrefix, byteutils.SliceToString(message.response.Data))
+		}
+
+		reqTimestamp, _ := strconv.ParseInt(byteutils.SliceToString(reqMeta[2]), 10, 64)
+		respTimestamp, _ := strconv.ParseInt(byteutils.SliceToString(respMeta[2]), 10, 64)
+
+		interval := (respTimestamp - reqTimestamp) / 1000000
+		if interval < 0 {
+			interval = 0
+		}
+
+		resurfaceLogger.SendHttpMessage(o.rLogger, resp, req, respTimestamp/1000000, interval, nil)
 	}
 }
 
 // String Returns the configured capture URL
 func (o *ResurfaceOutput) String() string {
-	return "Resurface output: " + o.config.options.Url
+	rules := o.config.options.Rules
+	for i, c := range rules {
+		if c == '\n' {
+			rules = rules[:i] + "..."
+			break
+		}
+	}
+
+	return "Resurface output: " + o.config.options.Url + " [" + rules + "] " +
+		"[" + strconv.Itoa(o.config.bufferSize) + "]"
 }
 
 // Close Closes the data channel
 func (o *ResurfaceOutput) Close() error {
-
-	Debug(1, logPrefix,
-		"messages received:", o.messageCounter[0], ", full messages sent:", o.messageCounter[1],
-		", orphans deleted:", o.messageCounter[2])
 	return nil
 }

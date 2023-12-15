@@ -10,7 +10,7 @@ require (
 	github.com/gorilla/websocket v1.5.0
 	github.com/klauspost/compress v1.16.5 // indirect
 	github.com/mattbaird/elastigo v0.0.0-20170123220020-2fe47fd29e4b
-	github.com/resurfaceio/logger-go/v3 v3.3.1
+	github.com/resurfaceio/logger-go/v3 v3.3.2
 	github.com/stretchr/testify v1.8.2
 	github.com/xdg-go/scram v1.1.2
 	golang.org/x/net v0.17.0
